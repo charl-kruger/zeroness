@@ -93,6 +93,7 @@ const trail = await box.audit();                           // every crossing, lo
 - `@zeroness/egress` — default-deny outbound proxy Worker (enforces Broker decisions).
 - `@zeroness/broker` — the trust-root Durable Object (the only component with secrets).
 - `@zeroness/agent` — `zeronessd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
+- `@zeroness/gatekeeper` — human-in-the-loop approval state machine + adapters (webhook, Cloudflare OS).
 - `@zeroness/policy` — author, **lint**, and **simulate** policies offline.
 
 ## Quickstart
@@ -137,10 +138,16 @@ design pattern to its Cloudflare-native mechanism.
 
 ## Status
 
-Early. The **policy engine, signing, capability handles, Egress Worker, and Broker
-are implemented**; the in-sandbox agent, snapshot/restore, TLS-MITM option, and
-the Gatekeeper bridge are scaffolded with clear seams. **Cloudflare Sandbox's
-outbound-intercept internals are undocumented** — Phase 0 verifies the exact hook.
+Implemented and unit-tested (26 tests): the **policy engine**, **Ed25519 signed
+command channel**, **capability handles**, the **Egress Worker**, the **Broker**
+(policy eval + per-request identity minting + R2/D1/KV capabilities + content-
+addressed snapshots + audit), **human-in-the-loop approvals** (`@zeroness/gatekeeper`),
+and the **`zeronessd` agent** (verifies every signed command before running it).
+
+Remaining: TLS-MITM interception, the transparent in-sandbox capability proxy,
+the `create-zeroness` starter, and — the big one — **live validation against a
+Cloudflare Sandbox** (its outbound-intercept internals are undocumented, so
+wiring all egress through the Worker is still to be proven end-to-end).
 
 ## A note on provenance
 

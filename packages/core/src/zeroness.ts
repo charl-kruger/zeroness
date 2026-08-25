@@ -37,6 +37,13 @@ export interface ZeronessConfig {
   snapshotOn?: "shutdown" | "never";
   /** Optional: enable per-sandbox CA TLS interception (default false — prefer L7 proxy). */
   tlsIntercept?: boolean;
+  /**
+   * URL of the in-sandbox agent (zeronessd) — typically the sandbox preview URL
+   * for the agent port. When set, exec/writeFile/readFile/snapshot are executed
+   * by the agent, which verifies the Ed25519 signature before running. When
+   * unset, commands fall back to the raw SDK (still signed + audited).
+   */
+  agentUrl?: string;
 }
 
 export interface ZeronessOptions {
@@ -87,8 +94,9 @@ export class Zeroness {
       HTTPS_PROXY: proxy.toString(),
       http_proxy: proxy.toString(),
       https_proxy: proxy.toString(),
-      // capability tokens the in-sandbox proxy uses to resolve cap: I/O
+      // the agent (zeronessd) reads these at boot to verify signed commands + resolve caps
       ZERONESS_SESSION: sessionToken,
+      ZERONESS_PUBKEY: pubKey,
       ZERONESS_CAPS: Object.entries(reg.handleTokens).map(([n, t]) => `${n}=${t}`).join(","),
     };
     if (cf.setEnvVars) await cf.setEnvVars(env);
@@ -128,9 +136,10 @@ export class ZeronessSandbox {
     private readonly broker: BrokerCall,
   ) {}
 
-  /** Run a shell command — signed, audited, governed. */
+  /** Run a shell command — signed, audited, and (when an agent is configured) verified + executed by zeronessd. */
   async exec(command: string, opts?: unknown) {
-    await this.sign("exec", command);
+    const viaAgent = await this.dispatch("exec", { command, opts });
+    if (viaAgent) { await this.audit("exec", { command, exitCode: viaAgent.exitCode, agent: true }); return viaAgent; }
     const r = await this.cf.exec(command, opts);
     await this.audit("exec", { command, exitCode: r.exitCode });
     return r;
@@ -142,7 +151,7 @@ export class ZeronessSandbox {
 
   async runCode(ctxOrCode: unknown, codeOrOpts?: unknown) {
     const body = typeof ctxOrCode === "string" ? ctxOrCode : JSON.stringify(codeOrOpts ?? "");
-    await this.sign("runCode", body);
+    await this.dispatch("runCode", { body }); // signed + audited; execution stays on the SDK's code runtime
     const r = await this.cf.runCode(ctxOrCode, codeOrOpts);
     await this.audit("runCode", { bytes: body.length });
     return r;
@@ -152,19 +161,24 @@ export class ZeronessSandbox {
   async writeFile(path: string, data: string | Uint8Array, opts?: unknown) {
     const cap = parseCap(path);
     if (cap) return this.capIO("PUT", cap, data);
-    await this.sign("writeFile", path);
+    const payload = data instanceof Uint8Array ? [...data] : data;
+    const viaAgent = await this.dispatch("writeFile", { path, data: payload });
+    if (viaAgent) return viaAgent;
     return this.cf.writeFile(path, data, opts);
   }
 
   async readFile(path: string, opts?: unknown) {
     const cap = parseCap(path);
     if (cap) return this.capIO("GET", cap);
+    const viaAgent = await this.dispatch("readFile", { path });
+    if (viaAgent) return viaAgent;
     return this.cf.readFile(path, opts);
   }
 
-  /** Checkpoint FS state to R2 (content-addressed) via the agent+broker. Returns a snapshot ref. */
+  /** Checkpoint FS state to R2 (content-addressed). The agent tars the FS and uploads it; returns a snapshot ref. */
   async snapshot(): Promise<string> {
-    await this.sign("snapshot", "");
+    const viaAgent = await this.dispatch("snapshot", {});
+    if (viaAgent?.ref) { await this.audit("snapshot", { ref: viaAgent.ref, agent: true }); return viaAgent.ref; }
     const { ref } = (await this.broker("POST", "/snapshot", { sessionId: this.sessionId })) as { ref: string };
     await this.audit("snapshot", { ref });
     return ref;
@@ -182,15 +196,28 @@ export class ZeronessSandbox {
     await this.broker("DELETE", "/session");
   }
 
-  private async sign(procedure: Envelope["procedure"], body: string) {
+  /**
+   * Sign a command, record it for audit, and — if an agent endpoint is
+   * configured — send it to zeronessd (which verifies the Ed25519 signature
+   * before executing) and return the agent's result. Returns null when no agent
+   * is wired, so callers fall back to the raw SDK.
+   */
+  private async dispatch(procedure: Envelope["procedure"], args: unknown): Promise<any | null> {
+    const body = JSON.stringify(args ?? {});
     const { envelope, signature } = await signCommand(
       this.signKey,
       { sid: this.sessionId, seq: ++this.seq, ts: Date.now(), nonce: randomNonce(), procedure },
       body,
     );
-    // The signed envelope travels with the command to zeronessd inside the box.
-    // (Wire-up is via the agent transport; recorded here for audit + verification.)
     await this.broker("POST", "/command", { envelope, signature });
+    if (!this.config.agentUrl) return null;
+    const res = await fetch(`${this.config.agentUrl.replace(/\/$/, "")}/command`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ envelope, signature, body }),
+    });
+    if (!res.ok) throw new Error(`agent ${procedure} → ${res.status}: ${await res.text()}`);
+    return res.json();
   }
 
   private async capIO(method: "GET" | "PUT", cap: ReturnType<typeof parseCap>, data?: string | Uint8Array) {

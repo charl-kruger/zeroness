@@ -2,19 +2,22 @@
  * zeroness — Broker (Durable Object): the trust root.
  *
  * One DO instance per session (keyed by the session token). It holds the policy,
- * the resource bindings + their real credentials, the agent public key, and the
- * audit log. It is the ONLY component that touches secrets: the Egress Worker
- * asks it to authorize each request, and it returns the exact headers to inject,
- * minted fresh per call. Nothing long-lived ever leaves this DO.
+ * the resource bindings + their real credentials, the agent public key, the
+ * approval state, and the audit log. It is the ONLY component that touches
+ * secrets: the Egress Worker asks it to authorize each request, and it returns
+ * the exact headers to inject, minted fresh per call.
  */
 
 import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken } from "@zeroness/core";
+import { ApprovalStore, emptyApprovalState, type ApprovalState, ManualGatekeeper, WebhookGatekeeper, type GatekeeperAdapter } from "@zeroness/gatekeeper";
 
 export interface Env {
-  /** R2 bucket for FS snapshots (optional in dev). */
   SNAPSHOTS?: R2Bucket;
-  /** Secret values referenced by name in resource bindings. Wire real bindings/Secrets Store here. */
   SECRETS?: Record<string, string>;
+  /** Optional webhook that receives pending approvals. */
+  GATEKEEPER_URL?: string;
+  /** Dynamic D1/KV/etc. bindings are resolved by name from env. */
+  [binding: string]: unknown;
 }
 
 interface SessionState {
@@ -30,19 +33,27 @@ interface SessionState {
 interface AuditEntry { ts: number; event: string; detail: unknown }
 
 export class ZeronessBroker {
-  constructor(private state: DurableObjectState, private env: Env) {}
+  private gatekeeper: GatekeeperAdapter;
+  constructor(private state: DurableObjectState, private env: Env) {
+    this.gatekeeper = env.GATEKEEPER_URL ? new WebhookGatekeeper(env.GATEKEEPER_URL) : new ManualGatekeeper();
+  }
 
   async fetch(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    const path = url.pathname;
+    const { pathname: path } = new URL(req.url);
     try {
       if (req.method === "POST" && path === "/session") return await this.createSession(await req.json());
+      if (req.method === "DELETE" && path === "/session") return await this.revoke();
       if (req.method === "POST" && path === "/authorize") return await this.authorize(await req.json());
       if (req.method === "POST" && path === "/command") return await this.recordCommand(await req.json());
       if (req.method === "POST" && path === "/audit") return await this.appendAudit(await req.json());
       if (req.method === "GET" && path === "/audit") return json(await this.getAudit());
-      if (req.method === "POST" && path === "/snapshot") return await this.snapshot();
-      if (req.method === "DELETE" && path === "/session") return await this.revoke();
+      if (req.method === "GET" && path === "/approvals") return json(await this.listApprovals());
+      const ap = path.match(/^\/approval\/([^/]+)(\/approve|\/deny)?$/);
+      if (ap) return await this.approval(req.method, ap[1]!, ap[2], req);
+      if (req.method === "POST" && path === "/snapshot/upload") return await this.snapshotUpload(req);
+      const sn = path.match(/^\/snapshot\/(snap_[0-9a-f]+)$/);
+      if (req.method === "GET" && sn) return await this.snapshotGet(sn[1]!);
+      if (req.method === "POST" && path === "/snapshot") return await this.snapshotInstruct();
       if ((req.method === "POST" || req.method === "GET") && path.startsWith("/cap/")) {
         return await this.capIO(req.method, path.slice(5), req.method === "POST" ? await req.json() : {});
       }
@@ -59,13 +70,9 @@ export class ZeronessBroker {
     const handleTokens: Record<string, string> = {};
     for (const name of Object.keys(body.resources ?? {})) handleTokens[name] = mintOpaqueToken();
     const s: SessionState = {
-      sessionId: body.sessionId,
-      sessionToken: body.sessionToken,
-      policy: body.policy ?? { default: "deny" },
-      resources: body.resources ?? {},
-      handleTokens,
-      pubKey: body.pubKey,
-      lastSeq: 0,
+      sessionId: body.sessionId, sessionToken: body.sessionToken,
+      policy: body.policy ?? { default: "deny" }, resources: body.resources ?? {},
+      handleTokens, pubKey: body.pubKey, lastSeq: 0,
     };
     await this.state.storage.put("session", s);
     await this.append({ ts: Date.now(), event: "session:create", detail: { sessionId: s.sessionId } });
@@ -92,39 +99,40 @@ export class ZeronessBroker {
     }
 
     if (decision.verdict === "ask") {
+      const store = await this.approvals();
+      // A prior human approval (within TTL) lets the retry through.
+      if (store.isGranted(body.method, body.url)) {
+        await this.saveApprovals(store);
+        await this.append({ ts: Date.now(), event: "egress:allow-granted", detail: { url: body.url } });
+        return this.allowResponse(s, decision, u, "approved by human");
+      }
       const approvalId = mintOpaqueToken();
-      await this.state.storage.put(`approval:${approvalId}`, { url: body.url, method: body.method, ts: Date.now() });
-      await this.append({ ts: Date.now(), event: "egress:ask", detail: { url: body.url, approvalId, identity: decision.identity } });
-      // Phase 4: forward to a Gatekeeper for async human approval.
+      const reqInfo = { id: approvalId, sessionId: s.sessionId, method: body.method, url: body.url, identity: decision.identity, reason: decision.reason, createdAt: Date.now() };
+      store.create(reqInfo);
+      await this.saveApprovals(store);
+      await this.gatekeeper.onApprovalRequested(reqInfo).catch(() => {});
+      await this.append({ ts: Date.now(), event: "egress:ask", detail: { url: body.url, approvalId } });
       return json({ verdict: "ask", reason: decision.reason, target: body.url, approvalId });
     }
 
-    // allow → mint brokered identity for the matched capability, per request
-    const injectHeaders = decision.identity ? await this.mintIdentity(s, decision.identity, u) : {};
+    await this.append({ ts: Date.now(), event: "egress:allow", detail: { url: body.url, identity: decision.identity ?? null } });
+    return this.allowResponse(s, decision, u, decision.reason);
+  }
+
+  private async allowResponse(s: SessionState, decision: ReturnType<typeof evaluate>, u: URL, reason: string): Promise<Response> {
+    const injectHeaders = decision.identity ? await this.mintIdentity(s, decision.identity) : {};
     const target = decision.forwardURL ? reorigin(decision.forwardURL, u, decision.rewrite?.path) : applyPath(u, decision.rewrite?.path);
-    const dropHeaders = decision.rewrite?.headers
-      ? Object.entries(decision.rewrite.headers).filter(([, v]) => v === null).map(([k]) => k)
-      : [];
-    if (decision.rewrite?.headers) {
-      for (const [k, v] of Object.entries(decision.rewrite.headers)) if (v !== null) injectHeaders[k] = v;
-    }
-    await this.append({ ts: Date.now(), event: "egress:allow", detail: { url: body.url, target, identity: decision.identity ?? null } });
-    return json({ verdict: "allow", reason: decision.reason, target, injectHeaders, dropHeaders });
+    const dropHeaders = decision.rewrite?.headers ? Object.entries(decision.rewrite.headers).filter(([, v]) => v === null).map(([k]) => k) : [];
+    if (decision.rewrite?.headers) for (const [k, v] of Object.entries(decision.rewrite.headers)) if (v !== null) injectHeaders[k] = v;
+    return json({ verdict: "allow", reason, target, injectHeaders, dropHeaders });
   }
 
   /** Turn a capability handle into request headers — the sandbox never sees the secret. */
-  private async mintIdentity(s: SessionState, cap: string, _target: URL): Promise<Record<string, string>> {
-    const name = cap.replace(/^cap:/, "");
-    const binding = s.resources[name] as ResourceBinding | undefined;
+  private async mintIdentity(s: SessionState, cap: string): Promise<Record<string, string>> {
+    const binding = s.resources[cap.replace(/^cap:/, "")] as ResourceBinding | undefined;
     if (!binding) return {};
-    if ("accessToken" in binding) {
-      const secret = this.secret(binding.accessToken);
-      return secret ? { authorization: `Bearer ${secret}` } : {};
-    }
-    if ("secret" in binding) {
-      const secret = this.secret(binding.secret);
-      return secret ? { authorization: `Bearer ${secret}` } : {};
-    }
+    if ("accessToken" in binding) { const t = this.secret(binding.accessToken); return t ? { authorization: `Bearer ${t}` } : {}; }
+    if ("secret" in binding) { const t = this.secret(binding.secret); return t ? { authorization: `Bearer ${t}` } : {}; }
     if ("oidc" in binding) {
       const jwt = await this.mintOidc(binding.oidc.audience, binding.oidc.subject ?? s.sessionId, binding.oidc.ttlSeconds ?? 300);
       return { authorization: `Bearer ${jwt}` };
@@ -132,11 +140,24 @@ export class ZeronessBroker {
     return {};
   }
 
+  // ---- approvals (human-in-the-loop) ----
+  private async approval(method: string, id: string, action: string | undefined, _req: Request): Promise<Response> {
+    const store = await this.approvals();
+    if (method === "GET" && !action) { const a = store.get(id); return a ? json(a) : new Response("not found", { status: 404 }); }
+    if (method === "POST" && action === "/approve") { const a = store.approve(id); await this.saveApprovals(store); await this.append({ ts: Date.now(), event: "approval:approve", detail: { id } }); return a ? json(a) : new Response("not found", { status: 404 }); }
+    if (method === "POST" && action === "/deny") { const a = store.deny(id); await this.saveApprovals(store); await this.append({ ts: Date.now(), event: "approval:deny", detail: { id } }); return a ? json(a) : new Response("not found", { status: 404 }); }
+    return new Response("method not allowed", { status: 405 });
+  }
+
+  private async listApprovals(): Promise<unknown> {
+    const store = await this.approvals();
+    return Object.values(store.state.approvals).filter((a) => a.status === "pending");
+  }
+
   // ---- signed command channel + audit ----
   private async recordCommand(body: { envelope: { seq: number; procedure: string }; signature: string }): Promise<Response> {
     const s = await this.session();
     if (!s) return json({ error: "no session" }, 401);
-    // (Full agent-side verification lives in zeronessd; the broker tracks seq for audit + replay visibility.)
     if (body.envelope.seq > s.lastSeq) { s.lastSeq = body.envelope.seq; await this.state.storage.put("session", s); }
     await this.append({ ts: Date.now(), event: "command", detail: { procedure: body.envelope.procedure, seq: body.envelope.seq } });
     return new Response(null, { status: 204 });
@@ -146,63 +167,99 @@ export class ZeronessBroker {
     await this.append({ ts: body.ts ?? Date.now(), event: body.event, detail: body.detail });
     return new Response(null, { status: 204 });
   }
+  private async getAudit(): Promise<AuditEntry[]> { return (await this.state.storage.get<AuditEntry[]>("audit")) ?? []; }
 
-  private async getAudit(): Promise<AuditEntry[]> {
-    return (await this.state.storage.get<AuditEntry[]>("audit")) ?? [];
-  }
-
-  // ---- capability I/O (R2 for now; D1/KV are analogous) ----
-  private async capIO(method: string, name: string, body: { path?: string; data?: number[] | string }): Promise<Response> {
+  // ---- capability I/O: R2 · D1 · KV ----
+  private async capIO(method: string, name: string, body: { path?: string; data?: number[] | string; query?: string; params?: unknown[] }): Promise<Response> {
     const s = await this.session();
     const binding = s?.resources[name] as ResourceBinding | undefined;
     if (!s || !binding) return json({ error: "unknown capability" }, 404);
-    if ("r2" in binding && this.env.SNAPSHOTS) {
+
+    if ("r2" in binding) {
+      const bucket = this.env.SNAPSHOTS; // demo maps R2 caps to the snapshots bucket; production binds per-name
+      if (!bucket) return json({ error: "r2 binding unavailable" }, 501);
       const key = `${binding.prefix ?? ""}${body.path ?? ""}`;
       if (method === "POST") {
         if (binding.mode === "ro") return json({ error: "read-only capability" }, 403);
-        const data = typeof body.data === "string" ? body.data : new Uint8Array(body.data ?? []);
-        await this.env.SNAPSHOTS.put(key, data);
+        await bucket.put(key, typeof body.data === "string" ? body.data : new Uint8Array(body.data ?? []));
         await this.append({ ts: Date.now(), event: "cap:write", detail: { name, key } });
         return json({ ok: true, key });
-      } else {
-        const obj = await this.env.SNAPSHOTS.get(key);
-        await this.append({ ts: Date.now(), event: "cap:read", detail: { name, key, found: !!obj } });
-        return json({ content: obj ? await obj.text() : null });
       }
+      const obj = await bucket.get(key);
+      await this.append({ ts: Date.now(), event: "cap:read", detail: { name, key, found: !!obj } });
+      return json({ content: obj ? await obj.text() : null });
     }
-    return json({ error: "capability type not yet wired (D1/KV/queue)" }, 501);
+
+    if ("d1" in binding) {
+      const db = this.env[binding.d1] as D1Database | undefined;
+      if (!db) return json({ error: `D1 binding '${binding.d1}' not found` }, 501);
+      if (method === "POST" && binding.mode !== "ro" && body.query) {
+        const r = await db.prepare(body.query).bind(...(body.params ?? [])).run();
+        await this.append({ ts: Date.now(), event: "cap:d1:write", detail: { name } });
+        return json({ success: r.success, meta: r.meta });
+      }
+      const r = await db.prepare(body.query ?? "SELECT 1").bind(...(body.params ?? [])).all();
+      await this.append({ ts: Date.now(), event: "cap:d1:read", detail: { name } });
+      return json({ results: r.results });
+    }
+
+    if ("kv" in binding) {
+      const ns = this.env[binding.kv] as KVNamespace | undefined;
+      if (!ns) return json({ error: `KV binding '${binding.kv}' not found` }, 501);
+      const key = `${binding.prefix ?? ""}${body.path ?? ""}`;
+      if (method === "POST") {
+        if (binding.mode === "ro") return json({ error: "read-only capability" }, 403);
+        await ns.put(key, typeof body.data === "string" ? body.data : new Uint8Array(body.data ?? []));
+        await this.append({ ts: Date.now(), event: "cap:kv:write", detail: { name, key } });
+        return json({ ok: true });
+      }
+      await this.append({ ts: Date.now(), event: "cap:kv:read", detail: { name, key } });
+      return json({ content: await ns.get(key) });
+    }
+
+    return json({ error: "capability type not yet wired (queue)" }, 501);
   }
 
-  private async snapshot(): Promise<Response> {
-    // Real impl: signal zeronessd to tar the FS and stream it to R2, content-addressed.
-    const ref = `snap_${mintOpaqueToken().replace(/^zn_/, "")}`;
-    await this.append({ ts: Date.now(), event: "snapshot", detail: { ref } });
-    return json({ ref });
+  // ---- snapshots: content-addressed to R2 ----
+  private async snapshotInstruct(): Promise<Response> {
+    // The agent (zeronessd) tars the writable FS and POSTs the bytes to /snapshot/upload.
+    return json({ upload: "/snapshot/upload", method: "POST" });
+  }
+  private async snapshotUpload(req: Request): Promise<Response> {
+    if (!this.env.SNAPSHOTS) return json({ error: "no snapshot bucket" }, 501);
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    const ref = `snap_${await sha256Hex(bytes)}`;
+    await this.env.SNAPSHOTS.put(`snapshots/${ref}`, bytes);
+    await this.append({ ts: Date.now(), event: "snapshot:upload", detail: { ref, size: bytes.byteLength } });
+    return json({ ref, size: bytes.byteLength });
+  }
+  private async snapshotGet(ref: string): Promise<Response> {
+    if (!this.env.SNAPSHOTS) return json({ error: "no snapshot bucket" }, 501);
+    const obj = await this.env.SNAPSHOTS.get(`snapshots/${ref}`);
+    if (!obj) return new Response("not found", { status: 404 });
+    return new Response(obj.body, { headers: { "content-type": "application/octet-stream" } });
   }
 
   // ---- helpers ----
-  private async session(): Promise<SessionState | undefined> {
-    return this.state.storage.get<SessionState>("session");
+  private async session(): Promise<SessionState | undefined> { return this.state.storage.get<SessionState>("session"); }
+  private async approvals(): Promise<ApprovalStore> {
+    const st = (await this.state.storage.get<ApprovalState>("approvals")) ?? emptyApprovalState();
+    return new ApprovalStore(st);
   }
+  private async saveApprovals(store: ApprovalStore): Promise<void> { store.sweep(); await this.state.storage.put("approvals", store.state); }
   private async append(e: AuditEntry): Promise<void> {
     const log = (await this.state.storage.get<AuditEntry[]>("audit")) ?? [];
-    log.push(e);
-    await this.state.storage.put("audit", log.slice(-1000));
+    log.push(e); await this.state.storage.put("audit", log.slice(-1000));
   }
-  private secret(name: string): string | undefined {
-    return this.env.SECRETS?.[name] ?? (this.env as unknown as Record<string, string>)[name];
-  }
+  private secret(name: string): string | undefined { return this.env.SECRETS?.[name] ?? (this.env[name] as string | undefined); }
   private async mintOidc(audience: string, subject: string, ttl: number): Promise<string> {
     let jwk = await this.state.storage.get<JsonWebKey>("oidc-key");
     let priv: CryptoKey;
     if (!jwk) {
       const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
       jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-      await this.state.storage.put("oidc-key", jwk);
-      priv = pair.privateKey;
-    } else {
-      priv = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["sign"]);
-    }
+      await this.state.storage.put("oidc-key", jwk); priv = pair.privateKey;
+    } else priv = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["sign"]);
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "EdDSA", typ: "JWT" }));
     const payload = b64url(JSON.stringify({ iss: "zeroness", sub: subject, aud: audience, iat: now, exp: now + ttl, jti: mintOpaqueToken() }));
@@ -211,20 +268,19 @@ export class ZeronessBroker {
   }
 }
 
-// The DO is reached via binding; a bare fetch handler keeps wrangler happy.
 export default { fetch: () => new Response("zeroness broker (durable object)", { status: 200 }) };
 
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const copy = new Uint8Array(bytes.byteLength); copy.set(bytes);
+  const d = await crypto.subtle.digest("SHA-256", copy);
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function reorigin(base: string, orig: URL, pathOverride?: string): string {
-  const b = new URL(base);
-  b.pathname = pathOverride ?? orig.pathname;
-  b.search = orig.search;
-  return b.toString();
+  const b = new URL(base); b.pathname = pathOverride ?? orig.pathname; b.search = orig.search; return b.toString();
 }
 function applyPath(orig: URL, pathOverride?: string): string {
   if (!pathOverride) return orig.toString();
-  const u = new URL(orig.toString());
-  u.pathname = pathOverride;
-  return u.toString();
+  const u = new URL(orig.toString()); u.pathname = pathOverride; return u.toString();
 }
 function json(v: unknown, status = 200): Response {
   return new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });

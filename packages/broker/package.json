@@ -11,6 +11,6 @@
     "deploy": "wrangler deploy",
     "test": "echo 'no tests yet'"
   },
-  "dependencies": { "@zeroness/core": "workspace:*" },
+  "dependencies": { "@zeroness/core": "workspace:*", "@zeroness/gatekeeper": "workspace:*" },
   "devDependencies": { "wrangler": "^3.80.0" }
 }
