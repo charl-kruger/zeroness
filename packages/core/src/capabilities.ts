@@ -4,8 +4,8 @@
  * Resources (R2/D1/KV/secrets/upstream identities) are handed to the sandbox as
  * OPAQUE handles ("cap:reports"). The real binding + any credential live only in
  * the broker; the sandbox never sees keys and cannot enumerate or forge
- * bindings. This is the Vercel `drive_id` capability-token pattern generalized
- * to Cloudflare resources.
+ * bindings. This is the capability-token pattern — opaque, unforgeable resource
+ * handles — applied to Cloudflare resources.
  */
 
 export type ResourceBinding =

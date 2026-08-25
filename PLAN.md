@@ -10,7 +10,7 @@ worlds and don't talk. Zeroness is the open-source library that fuses them: it
 gives any Cloudflare Sandbox a **programmable egress firewall**, **brokered
 short-lived identity (no secrets in the sandbox)**, and **capability-token
 resource access**, governed by the same Gatekeeper/human-in-the-loop model. These
-are precisely the mechanisms that make Vercel Sandbox differentiated — rebuilt
+are precisely the mechanisms that differentiate a best-in-class sandbox — rebuilt
 Cloudflare-native, generalized, and made public.
 
 Zeroness transfers **architecture lessons** (design patterns: capability tokens,
@@ -59,8 +59,8 @@ untrusted Linux processes. There is no bridge from "an agent typed `curl`/`pip
 install`/opened a socket in a real Linux sandbox" to the Gatekeeper capability
 model.
 
-### What we learned from reverse-engineering Vercel Sandbox
-The six mechanisms that make it differentiated (see `vercel-sandbox-reconstruction/`):
+### The design patterns we build on
+The six mechanisms that differentiate a best-in-class sandbox:
 1. **microVM is the boundary; the container is thin** — honest, unambiguous isolation.
 2. **Drives = opaque capability tokens** — resources addressed by unguessable,
    control-plane-minted handles never exposed to the guest; isolation by
@@ -90,14 +90,14 @@ arbitrary code, and still know — and control, and audit, and get a human to
 approve — exactly which hosts it reached and which of *your* credentials (never
 exposed to it) were used.
 
-Nobody ships this as an open library. Vercel has it but closed and platform-
+Nobody ships this as an open library. Proprietary platforms keep it closed and platform-
 locked. Cloudflare has both halves but unconnected. Zeroness is the missing seam.
 
 ---
 
-## 3. Vercel insight → Cloudflare-native mechanism (the mapping)
+## 3. Design pattern → Cloudflare-native mechanism (the mapping)
 
-| Vercel mechanism | Zeroness on Cloudflare | Built from |
+| Pattern | Zeroness on Cloudflare | Built from |
 |---|---|---|
 | Per-sandbox MITM egress firewall (SNI/host/path policy, transforms) | **Egress Worker** in front of the sandbox: all outbound HTTP is already interceptable; Zeroness adds a declarative **NetworkPolicy** engine (allow/deny by host+path+method, rewrite, forwardURL). Optional TLS interception via a per-sandbox CA injected into the container trust store. | Workers, the existing "intercept outbound HTTP" hook, `fetch()` |
 | OIDC-brokered, audience-bound identity (no secrets in sandbox) | **Identity Broker**: sandbox references an upstream by a **capability handle**; the broker mints/attaches a short-lived, `aud`-bound token at egress time. Backed by Cloudflare **Access service tokens / mTLS / Workers OIDC**, and unified with **Gatekeeper** OAuth for SaaS. | Cloudflare Access, `SignJWT`, Gatekeepers |
@@ -215,7 +215,7 @@ simulatable offline), **auditable** (every boundary crossing is a logged event).
   enumerate or forge bindings (registry lives in the broker; handles are random
   and per-session).
 - **Signed control channel.** Commands are Ed25519-signed per session; `zeronessd`
-  refuses unsigned/stale commands (freshness nonce — improving on the Vercel gap
+  refuses unsigned/stale commands (freshness nonce — improving on the common gap
   where the timestamp wasn't freshness-checked).
 - **Human-in-the-loop for risky verdicts** via Gatekeepers (async simulate-then-
   apply), so untrusted code can't quietly exfiltrate or spend.
@@ -223,7 +223,7 @@ simulatable offline), **auditable** (every boundary crossing is a logged event).
 - **Honest about the substrate.** We document that CF Sandbox isolation is
   container-based and that Zeroness's perimeter is the *governance* layer; we add
   heartbeat/attestation so a wedged sandbox is detectable, and we recommend one
-  tenant per sandbox (Vercel's lesson).
+  tenant per sandbox (the standard single-tenant-microVM lesson).
 
 ---
 
@@ -260,10 +260,10 @@ the capability registry, docs site, `create-zeroness` starter.
 - **vs. raw Cloudflare Sandbox:** turns a bare execution box into a zero-trust,
   governed, auditable process — the difference between "run this code" and "run
   this code *on behalf of a user, with these exact powers, and prove it.*"
-- **vs. Vercel Sandbox:** open-source, portable, and *more* — Zeroness unifies
+- **vs. closed platform sandboxes:** open-source, portable, and *more* — Zeroness unifies
   network governance with an app-level capability/human-in-the-loop model (via
-  Gatekeepers) that Vercel doesn't expose, and closes the signing-freshness gap
-  we found in Vercel's own channel.
+  Gatekeepers) that closed platforms don't expose, and closes a common signing-freshness gap
+  common to typical signed-command channels.
 - **vs. E2B / Modal / Fly:** those isolate; none ship a declarative egress +
   brokered-identity + capability-resource mesh as a library.
 - **For the AI-agent era:** this is the safety layer everyone building "let the
@@ -302,5 +302,5 @@ the capability registry, docs site, `create-zeroness` starter.
 - **Perf.** Every egress hop adds latency; batch/keep-alive, and make the proxy
   optional per-route.
 - **This transfers design patterns, not code.** Nothing here derives from
-  Vercel's proprietary implementation — only from the public architectural shape
+  any third party's proprietary implementation — only from public architectural shapes
   and from standard zero-trust patterns.

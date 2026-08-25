@@ -27,8 +27,8 @@ Cloudflare already ships both halves of the answer and hasn't connected them:
   human-in-the-loop governance — but only at the OAuth/SaaS layer.
 
 **zeroness is the missing seam.** It pushes Gatekeeper-style governance down onto
-the code-execution layer, using the network-and-identity techniques proven by
-Vercel Sandbox — rebuilt Cloudflare-native, generalized, and open.
+the code-execution layer, using proven zero-trust network-and-identity techniques —
+built Cloudflare-native, generalized, and open.
 
 ## What you get
 
@@ -133,7 +133,7 @@ console.log(formatSimulation(simulate(myPolicy, [
 | audit log | blind spots | the Broker log is tampered |
 
 See [`PLAN.md`](./PLAN.md) for the full design, roadmap, and the mapping from each
-Vercel-Sandbox insight to its Cloudflare-native mechanism.
+design pattern to its Cloudflare-native mechanism.
 
 ## Status
 

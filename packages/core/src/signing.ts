@@ -3,7 +3,7 @@
  *
  * Every control-plane command to the sandbox agent is wrapped in a signed
  * envelope. The agent (zeronessd) verifies signature + freshness before
- * executing. Improves on the Vercel scheme we studied: the payload hash and a
+ * executing. Improves on the common signed-envelope scheme: the payload hash and a
  * per-session monotonic sequence + nonce are signed, and the agent enforces
  * freshness — closing the replay/body-tamper gaps.
  */

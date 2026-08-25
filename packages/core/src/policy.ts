@@ -19,7 +19,7 @@ export interface Rule {
   verdict?: Verdict;
   /** Capability handle whose brokered identity is injected on egress (e.g. "cap:stripe-ro"). */
   identity?: string;
-  /** Re-origin the request to this base URL (Vercel "forwardURL" pattern). */
+  /** Re-origin the request to this base URL (re-origin an internal call onto a trusted gateway). */
   forwardURL?: string;
   /** Header/path rewrites applied before forwarding. A null header value deletes it. */
   rewrite?: { headers?: Record<string, string | null>; path?: string };
