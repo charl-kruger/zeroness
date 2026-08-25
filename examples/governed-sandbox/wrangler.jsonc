@@ -1,0 +1,18 @@
+{
+  "name": "edgelock-example",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "EGRESS_URL": "https://edgelock-egress.example.workers.dev" },
+  "durable_objects": {
+    "bindings": [
+      // The Cloudflare Sandbox binding (from @cloudflare/sandbox setup).
+      { "name": "Sandbox", "class_name": "Sandbox" },
+      // The edgelock Broker DO — hosted by this Worker in the demo.
+      { "name": "EDGELOCK_BROKER", "class_name": "EdgelockBroker" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EdgelockBroker"] }],
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "edgelock-snapshots" }]
+  // `wrangler secret put STRIPE_RO` — the Broker injects it at egress-time.
+}

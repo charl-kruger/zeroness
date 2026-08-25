@@ -1,0 +1,11 @@
+{
+  // edgelock Egress Worker — the enforcement data plane.
+  "name": "edgelock-egress",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Bind the same EdgelockBroker DO the control plane uses.
+  "durable_objects": {
+    "bindings": [{ "name": "EDGELOCK_BROKER", "class_name": "EdgelockBroker", "script_name": "edgelock-broker" }]
+  }
+}

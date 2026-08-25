@@ -1,0 +1,16 @@
+{
+  "name": "@edgelock/broker",
+  "version": "0.1.0",
+  "description": "edgelock Broker — the trust-root Durable Object: policy eval, per-request identity minting, capability resolution, audit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "deploy": "wrangler deploy",
+    "test": "echo 'no tests yet'"
+  },
+  "dependencies": { "@edgelock/core": "workspace:*" },
+  "devDependencies": { "wrangler": "^3.80.0" }
+}
