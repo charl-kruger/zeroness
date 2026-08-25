@@ -1,5 +1,5 @@
 /**
- * Example: a governed Cloudflare Sandbox with edgelock.
+ * Example: a governed Cloudflare Sandbox with zeroness.
  *
  * The sandbox starts with default-deny network and zero credentials. It can pip
  * install (only from allow-listed hosts), read a public GitHub repo, and call
@@ -7,27 +7,27 @@
  * Broker at egress-time, never placed in the sandbox.
  */
 import { getSandbox } from "@cloudflare/sandbox";
-import { Edgelock } from "@edgelock/core";
+import { Zeroness } from "@zeroness/core";
 
 // Re-export the Broker DO so this Worker (or a sibling) can host it.
-export { EdgelockBroker } from "@edgelock/broker";
+export { ZeronessBroker } from "@zeroness/broker";
 
 export interface Env {
   Sandbox: DurableObjectNamespace;         // @cloudflare/sandbox binding
-  EDGELOCK_BROKER: DurableObjectNamespace;  // EdgelockBroker
-  EGRESS_URL: string;                       // https://edgelock-egress.<acct>.workers.dev
+  ZERONESS_BROKER: DurableObjectNamespace;  // ZeronessBroker
+  EGRESS_URL: string;                       // https://zeroness-egress.<acct>.workers.dev
 }
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const edgelock = new Edgelock({
+    const zeroness = new Zeroness({
       sandboxBinding: env.Sandbox,
-      broker: env.EDGELOCK_BROKER,
+      broker: env.ZERONESS_BROKER,
       egressUrl: env.EGRESS_URL,
       getSandbox,
     });
 
-    const box = await edgelock.sandbox("demo-user", {
+    const box = await zeroness.sandbox("demo-user", {
       network: {
         default: "deny",
         allow: [
@@ -37,7 +37,7 @@ export default {
           { host: "api.stripe.com", verdict: "ask", identity: "cap:stripe-ro" },
         ],
         transform: [
-          { host: "api.github.com", rewrite: { headers: { "user-agent": "edgelock-demo" } } },
+          { host: "api.github.com", rewrite: { headers: { "user-agent": "zeroness-demo" } } },
         ],
       },
       resources: {

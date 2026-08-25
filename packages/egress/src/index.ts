@@ -1,5 +1,5 @@
 /**
- * edgelock — Egress Worker (the enforcement data plane).
+ * zeroness — Egress Worker (the enforcement data plane).
  *
  * Every outbound request from a governed sandbox arrives here (via Cloudflare
  * Sandbox's outbound-intercept, or as an HTTP forward-proxy). This Worker:
@@ -15,7 +15,7 @@
  */
 
 export interface Env {
-  EDGELOCK_BROKER: DurableObjectNamespace;
+  ZERONESS_BROKER: DurableObjectNamespace;
 }
 
 interface AuthorizeResult {
@@ -38,8 +38,8 @@ export default {
     if (!target) return deny("no target", 400);
 
     // ---- 3. ask the Broker for a decision (it evaluates policy + mints identity) ----
-    const broker = env.EDGELOCK_BROKER.get(env.EDGELOCK_BROKER.idFromName(`token:${token}`));
-    const authRes = await broker.fetch("https://edgelock.broker/authorize", {
+    const broker = env.ZERONESS_BROKER.get(env.ZERONESS_BROKER.idFromName(`token:${token}`));
+    const authRes = await broker.fetch("https://zeroness.broker/authorize", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token, url: target.toString(), method: req.method }),
@@ -54,7 +54,7 @@ export default {
       // Phase 4: human-in-the-loop via Gatekeeper. Until approved, block the call.
       return new Response(
         JSON.stringify({ error: "approval_required", approvalId: decision.approvalId, reason: decision.reason }),
-        { status: 451, headers: { "content-type": "application/json", "x-edgelock-approval": decision.approvalId ?? "" } },
+        { status: 451, headers: { "content-type": "application/json", "x-zeroness-approval": decision.approvalId ?? "" } },
       );
     }
 
@@ -62,8 +62,8 @@ export default {
     const upstreamUrl = decision.target;
     const headers = new Headers(req.headers);
     headers.delete("proxy-authorization");
-    headers.delete("x-edgelock-session-token");
-    headers.delete("x-edgelock-target");
+    headers.delete("x-zeroness-session-token");
+    headers.delete("x-zeroness-target");
     for (const h of decision.dropHeaders ?? []) headers.delete(h);
     for (const [k, v] of Object.entries(decision.injectHeaders ?? {})) headers.set(k, v);
 
@@ -77,14 +77,14 @@ export default {
     const res = await fetch(upstream);
     // strip hop-by-hop; pass the rest through
     const outHeaders = new Headers(res.headers);
-    outHeaders.set("x-edgelock", "allowed");
+    outHeaders.set("x-zeroness", "allowed");
     return new Response(res.body, { status: res.status, headers: outHeaders });
   },
 };
 
 /** Token from Proxy-Authorization basic (password), Authorization basic, or a header. */
 function sessionToken(req: Request): string | null {
-  const h = req.headers.get("x-edgelock-session-token");
+  const h = req.headers.get("x-zeroness-session-token");
   if (h) return h;
   const proxyAuth = req.headers.get("proxy-authorization") ?? req.headers.get("authorization");
   if (proxyAuth?.toLowerCase().startsWith("basic ")) {
@@ -98,7 +98,7 @@ function sessionToken(req: Request): string | null {
 
 /** Absolute proxy URL, or the original target carried by the intercept header. */
 function intendedTarget(req: Request): URL | null {
-  const explicit = req.headers.get("x-edgelock-target");
+  const explicit = req.headers.get("x-zeroness-target");
   if (explicit) { try { return new URL(explicit); } catch { return null; } }
   try {
     const u = new URL(req.url);
@@ -109,8 +109,8 @@ function intendedTarget(req: Request): URL | null {
 }
 
 function deny(reason: string, status: number): Response {
-  return new Response(JSON.stringify({ error: "blocked_by_edgelock", reason }), {
+  return new Response(JSON.stringify({ error: "blocked_by_zeroness", reason }), {
     status,
-    headers: { "content-type": "application/json", "x-edgelock": "denied" },
+    headers: { "content-type": "application/json", "x-zeroness": "denied" },
   });
 }

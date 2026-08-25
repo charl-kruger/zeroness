@@ -1,14 +1,14 @@
 {
-  // edgelock Broker — deploy as its own Worker exposing the EdgelockBroker DO.
-  "name": "edgelock-broker",
+  // zeroness Broker — deploy as its own Worker exposing the ZeronessBroker DO.
+  "name": "zeroness-broker",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "EDGELOCK_BROKER", "class_name": "EdgelockBroker" }]
+    "bindings": [{ "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EdgelockBroker"] }],
-  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "edgelock-snapshots" }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ZeronessBroker"] }],
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "zeroness-snapshots" }]
   // Secrets referenced by resource bindings: add via `wrangler secret put <NAME>`,
   // then map them into env.SECRETS, or use Cloudflare Secrets Store bindings.
 }

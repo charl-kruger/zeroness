@@ -1,10 +1,10 @@
 /**
- * @edgelock/policy — author, lint, and simulate network policies offline.
+ * @zeroness/policy — author, lint, and simulate network policies offline.
  *
  * Policy is data, so you can test it without deploying: run a batch of requests
  * through `simulate()` and lint for foot-guns before it ever governs a sandbox.
  */
-import { evaluate, type NetworkPolicy, type Decision, type RequestInfo } from "@edgelock/core";
+import { evaluate, type NetworkPolicy, type Decision, type RequestInfo } from "@zeroness/core";
 
 export interface Finding {
   level: "error" | "warn" | "info";

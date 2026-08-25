@@ -1,5 +1,5 @@
 /**
- * edgelock — network policy engine.
+ * zeroness — network policy engine.
  *
  * A NetworkPolicy is *data*: a default stance plus allow / deny / transform
  * rules. `evaluate()` turns an outbound request into a Decision the egress

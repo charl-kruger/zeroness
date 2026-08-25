@@ -1,5 +1,5 @@
 {
-  "name": "@edgelock/core",
+  "name": "@zeroness/core",
   "version": "0.1.0",
   "description": "Zero-trust wrapper, network policy engine, capability handles, and signed command channel for Cloudflare Sandboxes.",
   "license": "Apache-2.0",

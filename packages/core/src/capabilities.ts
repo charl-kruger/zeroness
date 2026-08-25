@@ -1,5 +1,5 @@
 /**
- * edgelock — capability handles.
+ * zeroness — capability handles.
  *
  * Resources (R2/D1/KV/secrets/upstream identities) are handed to the sandbox as
  * OPAQUE handles ("cap:reports"). The real binding + any credential live only in
@@ -44,5 +44,5 @@ export function mintOpaqueToken(): string {
   const u = crypto.getRandomValues(new Uint8Array(24));
   let s = "";
   for (const b of u) s += b.toString(16).padStart(2, "0");
-  return `elk_${s}`;
+  return `zn_${s}`;
 }

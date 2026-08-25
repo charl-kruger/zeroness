@@ -1,4 +1,4 @@
-# @edgelock/agent — `edgelockd`
+# @zeroness/agent — `zeronessd`
 
 The tiny in-sandbox agent. It is the counterpart to the signed command channel
 and the capability proxy. Ships as a single static binary/script baked into the
@@ -8,7 +8,7 @@ Responsibilities:
 - **Verify signed commands.** Holds the session public key (delivered at boot);
   refuses any `exec`/`runCode`/`writeFile`/`snapshot` whose Ed25519 envelope is
   invalid, stale (freshness window), or replayed (monotonic `seq`).
-- **Serve capability I/O.** Exposes a localhost endpoint (`$EDGELOCK_CAPS`) that
+- **Serve capability I/O.** Exposes a localhost endpoint (`$ZERONESS_CAPS`) that
   the SDK/CLI uses for `cap:` reads/writes, forwarding to the Broker so the code
   never holds real credentials.
 - **Heartbeat + attestation.** Periodically reports liveness and a measurement of
@@ -17,6 +17,6 @@ Responsibilities:
 - **Snapshot/restore.** On command, tars the writable FS and streams it to R2
   (content-addressed) via the Broker; `restore` pulls one back.
 
-Status: **Phase 3 scaffold.** `edgelockd.mjs` sketches the verify loop; the
+Status: **Phase 3 scaffold.** `zeronessd.mjs` sketches the verify loop; the
 transport (how signed envelopes reach the agent — a localhost control socket vs.
 riding on the exec channel) is the main open wiring decision.

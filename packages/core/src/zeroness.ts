@@ -1,9 +1,9 @@
 /**
- * edgelock — the developer-facing wrapper.
+ * zeroness — the developer-facing wrapper.
  *
- * `Edgelock` turns a bare Cloudflare Sandbox into a zero-trust, governed process:
+ * `Zeroness` turns a bare Cloudflare Sandbox into a zero-trust, governed process:
  *   - starts with default-deny network + zero credentials,
- *   - routes all egress through the edgelock Egress Worker (policy + identity),
+ *   - routes all egress through the zeroness Egress Worker (policy + identity),
  *   - hands resources to the code as opaque `cap:` handles,
  *   - signs every command to the in-sandbox agent,
  *   - keeps a full audit trail in the Broker.
@@ -30,7 +30,7 @@ export interface CfSandbox {
 /** Injected so core has no hard dependency on the SDK package. Pass `getSandbox` from @cloudflare/sandbox. */
 export type GetSandbox = (binding: unknown, id: string) => CfSandbox | Promise<CfSandbox>;
 
-export interface EdgelockConfig {
+export interface ZeronessConfig {
   network?: NetworkPolicy;
   resources?: ResourceMap;
   /** Checkpoint the FS to R2 on "shutdown", or never (default). */
@@ -39,9 +39,9 @@ export interface EdgelockConfig {
   tlsIntercept?: boolean;
 }
 
-export interface EdgelockOptions {
+export interface ZeronessOptions {
   sandboxBinding: unknown;         // env.Sandbox (the @cloudflare/sandbox binding)
-  broker: DurableObjectNamespace;  // env.EDGELOCK_BROKER
+  broker: DurableObjectNamespace;  // env.ZERONESS_BROKER
   egressUrl: string;               // public URL of the egress Worker, e.g. https://egress.example.workers.dev
   getSandbox: GetSandbox;          // from "@cloudflare/sandbox"
 }
@@ -50,11 +50,11 @@ interface SessionRegistration {
   handleTokens: Record<string, string>; // cap name → opaque token
 }
 
-export class Edgelock {
-  constructor(private readonly opts: EdgelockOptions) {}
+export class Zeroness {
+  constructor(private readonly opts: ZeronessOptions) {}
 
   /** Create (or attach to) a governed sandbox for `id` with `config`. */
-  async sandbox(id: string, config: EdgelockConfig = {}): Promise<EdgelockSandbox> {
+  async sandbox(id: string, config: ZeronessConfig = {}): Promise<ZeronessSandbox> {
     const sessionId = `${id}:${crypto.randomUUID()}`;
     // Mint the session token client-side so the Broker DO can be keyed by it —
     // the Egress Worker (which only knows the token) then reaches the same DO.
@@ -80,7 +80,7 @@ export class Edgelock {
     //    session. Cloudflare Sandbox's outbound-intercept forwards to this URL;
     //    the proxy env vars are the portable fallback for HTTP clients.
     const proxy = new URL(this.opts.egressUrl);
-    proxy.username = "edgelock";
+    proxy.username = "zeroness";
     proxy.password = sessionToken;
     const env: Record<string, string> = {
       HTTP_PROXY: proxy.toString(),
@@ -88,25 +88,25 @@ export class Edgelock {
       http_proxy: proxy.toString(),
       https_proxy: proxy.toString(),
       // capability tokens the in-sandbox proxy uses to resolve cap: I/O
-      EDGELOCK_SESSION: sessionToken,
-      EDGELOCK_CAPS: Object.entries(reg.handleTokens).map(([n, t]) => `${n}=${t}`).join(","),
+      ZERONESS_SESSION: sessionToken,
+      ZERONESS_CAPS: Object.entries(reg.handleTokens).map(([n, t]) => `${n}=${t}`).join(","),
     };
     if (cf.setEnvVars) await cf.setEnvVars(env);
-    else await cf.exec(`printf '%s\\n' ${Object.entries(env).map(([k, v]) => `'export ${k}=${shq(v)}'`).join(" ")} >> /etc/profile.d/edgelock.sh`);
+    else await cf.exec(`printf '%s\\n' ${Object.entries(env).map(([k, v]) => `'export ${k}=${shq(v)}'`).join(" ")} >> /etc/profile.d/zeroness.sh`);
 
-    return new EdgelockSandbox(sessionId, cf, keys.privateKey, config, (m, p, b) => this.broker(brokerKey, m, p, b));
+    return new ZeronessSandbox(sessionId, cf, keys.privateKey, config, (m, p, b) => this.broker(brokerKey, m, p, b));
   }
 
-  /** Resume/branch a sandbox from a snapshot ref returned by EdgelockSandbox.snapshot(). */
-  async resume(snapshotRef: string, id = crypto.randomUUID()): Promise<EdgelockSandbox> {
+  /** Resume/branch a sandbox from a snapshot ref returned by ZeronessSandbox.snapshot(). */
+  async resume(snapshotRef: string, id = crypto.randomUUID()): Promise<ZeronessSandbox> {
     const box = await this.sandbox(id, {});
-    await box.exec(`edgelockd restore ${shq(snapshotRef)}`); // agent pulls checkpoint from R2 via broker
+    await box.exec(`zeronessd restore ${shq(snapshotRef)}`); // agent pulls checkpoint from R2 via broker
     return box;
   }
 
   private async broker(key: string, method: string, path: string, body?: unknown): Promise<unknown> {
     const stub = this.opts.broker.get(this.opts.broker.idFromName(key));
-    const res = await stub.fetch(`https://edgelock.broker${path}`, {
+    const res = await stub.fetch(`https://zeroness.broker${path}`, {
       method,
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -118,13 +118,13 @@ export class Edgelock {
 
 type BrokerCall = (method: string, path: string, body?: unknown) => Promise<unknown>;
 
-export class EdgelockSandbox {
+export class ZeronessSandbox {
   private seq = 0;
   constructor(
     public readonly sessionId: string,
     private readonly cf: CfSandbox,
     private readonly signKey: CryptoKey,
-    private readonly config: EdgelockConfig,
+    private readonly config: ZeronessConfig,
     private readonly broker: BrokerCall,
   ) {}
 
@@ -188,7 +188,7 @@ export class EdgelockSandbox {
       { sid: this.sessionId, seq: ++this.seq, ts: Date.now(), nonce: randomNonce(), procedure },
       body,
     );
-    // The signed envelope travels with the command to edgelockd inside the box.
+    // The signed envelope travels with the command to zeronessd inside the box.
     // (Wire-up is via the agent transport; recorded here for audit + verification.)
     await this.broker("POST", "/command", { envelope, signature });
   }

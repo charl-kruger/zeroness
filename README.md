@@ -1,4 +1,4 @@
-<h1 align="center">edgelock</h1>
+<h1 align="center">zeroness</h1>
 <p align="center"><strong>A capability & identity mesh for Cloudflare Sandboxes.</strong><br>
 Give untrusted code a real Linux box — and still control, broker, and audit every
 credential it uses and every host it reaches.</p>
@@ -26,7 +26,7 @@ Cloudflare already ships both halves of the answer and hasn't connected them:
 - **Cloudflare OS / Gatekeepers** — capability-based, zero-permission,
   human-in-the-loop governance — but only at the OAuth/SaaS layer.
 
-**edgelock is the missing seam.** It pushes Gatekeeper-style governance down onto
+**zeroness is the missing seam.** It pushes Gatekeeper-style governance down onto
 the code-execution layer, using the network-and-identity techniques proven by
 Vercel Sandbox — rebuilt Cloudflare-native, generalized, and open.
 
@@ -34,16 +34,16 @@ Vercel Sandbox — rebuilt Cloudflare-native, generalized, and open.
 
 ```ts
 import { getSandbox } from "@cloudflare/sandbox";
-import { Edgelock } from "@edgelock/core";
+import { Zeroness } from "@zeroness/core";
 
-const edgelock = new Edgelock({
+const zeroness = new Zeroness({
   sandboxBinding: env.Sandbox,
-  broker: env.EDGELOCK_BROKER,
+  broker: env.ZERONESS_BROKER,
   egressUrl: env.EGRESS_URL,
   getSandbox,
 });
 
-const box = await edgelock.sandbox("user-42", {
+const box = await zeroness.sandbox("user-42", {
   network: {
     default: "deny",                                   // no internet unless allowed
     allow: [
@@ -78,7 +78,7 @@ const trail = await box.audit();                           // every crossing, lo
 ## Architecture
 
 ```
- your Worker ──signed cmds──►  Edgelock  ──►  Cloudflare Sandbox (Linux)
+ your Worker ──signed cmds──►  Zeroness  ──►  Cloudflare Sandbox (Linux)
                                   │                     │ all egress
                             ┌─────▼──────┐              ▼
                             │  Broker DO │◄──authorize──  Egress Worker ──► internet
@@ -89,11 +89,11 @@ const trail = await box.audit();                           // every crossing, lo
                             └────────────┘
 ```
 
-- `@edgelock/core` — the `Edgelock` wrapper, policy engine, capability handles, signing.
-- `@edgelock/egress` — default-deny outbound proxy Worker (enforces Broker decisions).
-- `@edgelock/broker` — the trust-root Durable Object (the only component with secrets).
-- `@edgelock/agent` — `edgelockd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
-- `@edgelock/policy` — author, **lint**, and **simulate** policies offline.
+- `@zeroness/core` — the `Zeroness` wrapper, policy engine, capability handles, signing.
+- `@zeroness/egress` — default-deny outbound proxy Worker (enforces Broker decisions).
+- `@zeroness/broker` — the trust-root Durable Object (the only component with secrets).
+- `@zeroness/agent` — `zeronessd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
+- `@zeroness/policy` — author, **lint**, and **simulate** policies offline.
 
 ## Quickstart
 
@@ -111,7 +111,7 @@ pnpm -C examples/governed-sandbox deploy
 Author policy with confidence — it's just data:
 
 ```ts
-import { lint, simulate, formatSimulation } from "@edgelock/policy";
+import { lint, simulate, formatSimulation } from "@zeroness/policy";
 lint(myPolicy);                                  // catch foot-guns in CI
 console.log(formatSimulation(simulate(myPolicy, [
   { host: "api.github.com", path: "/repos/a/b", method: "GET" },
@@ -144,7 +144,7 @@ outbound-intercept internals are undocumented** — Phase 0 verifies the exact h
 
 ## A note on provenance
 
-edgelock transfers **architecture patterns** — capability tokens, egress
+zeroness transfers **architecture patterns** — capability tokens, egress
 mediation, audience-bound token brokering, signed control channels — all
 established zero-trust practice. It contains no code, exploit, or proprietary
 material from any third party. Designed to be **upstreamable** into Cloudflare,

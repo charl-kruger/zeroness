@@ -1,5 +1,5 @@
 {
-  "name": "edgelock-monorepo",
+  "name": "zeroness-monorepo",
   "private": true,
   "version": "0.1.0",
   "description": "A capability & identity mesh for Cloudflare Sandboxes — zero-trust code execution.",

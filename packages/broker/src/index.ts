@@ -1,5 +1,5 @@
 /**
- * edgelock — Broker (Durable Object): the trust root.
+ * zeroness — Broker (Durable Object): the trust root.
  *
  * One DO instance per session (keyed by the session token). It holds the policy,
  * the resource bindings + their real credentials, the agent public key, and the
@@ -8,7 +8,7 @@
  * minted fresh per call. Nothing long-lived ever leaves this DO.
  */
 
-import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken } from "@edgelock/core";
+import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken } from "@zeroness/core";
 
 export interface Env {
   /** R2 bucket for FS snapshots (optional in dev). */
@@ -29,7 +29,7 @@ interface SessionState {
 
 interface AuditEntry { ts: number; event: string; detail: unknown }
 
-export class EdgelockBroker {
+export class ZeronessBroker {
   constructor(private state: DurableObjectState, private env: Env) {}
 
   async fetch(req: Request): Promise<Response> {
@@ -136,7 +136,7 @@ export class EdgelockBroker {
   private async recordCommand(body: { envelope: { seq: number; procedure: string }; signature: string }): Promise<Response> {
     const s = await this.session();
     if (!s) return json({ error: "no session" }, 401);
-    // (Full agent-side verification lives in edgelockd; the broker tracks seq for audit + replay visibility.)
+    // (Full agent-side verification lives in zeronessd; the broker tracks seq for audit + replay visibility.)
     if (body.envelope.seq > s.lastSeq) { s.lastSeq = body.envelope.seq; await this.state.storage.put("session", s); }
     await this.append({ ts: Date.now(), event: "command", detail: { procedure: body.envelope.procedure, seq: body.envelope.seq } });
     return new Response(null, { status: 204 });
@@ -174,8 +174,8 @@ export class EdgelockBroker {
   }
 
   private async snapshot(): Promise<Response> {
-    // Real impl: signal edgelockd to tar the FS and stream it to R2, content-addressed.
-    const ref = `snap_${mintOpaqueToken().slice(4)}`;
+    // Real impl: signal zeronessd to tar the FS and stream it to R2, content-addressed.
+    const ref = `snap_${mintOpaqueToken().replace(/^zn_/, "")}`;
     await this.append({ ts: Date.now(), event: "snapshot", detail: { ref } });
     return json({ ref });
   }
@@ -205,14 +205,14 @@ export class EdgelockBroker {
     }
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "EdDSA", typ: "JWT" }));
-    const payload = b64url(JSON.stringify({ iss: "edgelock", sub: subject, aud: audience, iat: now, exp: now + ttl, jti: mintOpaqueToken() }));
+    const payload = b64url(JSON.stringify({ iss: "zeroness", sub: subject, aud: audience, iat: now, exp: now + ttl, jti: mintOpaqueToken() }));
     const sig = await crypto.subtle.sign({ name: "Ed25519" }, priv, new TextEncoder().encode(`${header}.${payload}`));
     return `${header}.${payload}.${b64urlBytes(new Uint8Array(sig))}`;
   }
 }
 
 // The DO is reached via binding; a bare fetch handler keeps wrangler happy.
-export default { fetch: () => new Response("edgelock broker (durable object)", { status: 200 }) };
+export default { fetch: () => new Response("zeroness broker (durable object)", { status: 200 }) };
 
 function reorigin(base: string, orig: URL, pathOverride?: string): string {
   const b = new URL(base);

@@ -23,10 +23,10 @@ importers:
       '@cloudflare/sandbox':
         specifier: ^0.1.0
         version: 0.1.4
-      '@edgelock/broker':
+      '@zeroness/broker':
         specifier: workspace:*
         version: link:../../packages/broker
-      '@edgelock/core':
+      '@zeroness/core':
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:
@@ -38,7 +38,7 @@ importers:
 
   packages/broker:
     dependencies:
-      '@edgelock/core':
+      '@zeroness/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -56,7 +56,7 @@ importers:
 
   packages/policy:
     dependencies:
-      '@edgelock/core':
+      '@zeroness/core':
         specifier: workspace:*
         version: link:../core
 

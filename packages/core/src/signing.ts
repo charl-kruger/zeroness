@@ -1,8 +1,8 @@
 /**
- * edgelock — signed command channel (Ed25519 via WebCrypto).
+ * zeroness — signed command channel (Ed25519 via WebCrypto).
  *
  * Every control-plane command to the sandbox agent is wrapped in a signed
- * envelope. The agent (edgelockd) verifies signature + freshness before
+ * envelope. The agent (zeronessd) verifies signature + freshness before
  * executing. Improves on the Vercel scheme we studied: the payload hash and a
  * per-session monotonic sequence + nonce are signed, and the agent enforces
  * freshness — closing the replay/body-tamper gaps.

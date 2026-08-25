@@ -1,7 +1,7 @@
 {
-  "name": "@edgelock/egress",
+  "name": "@zeroness/egress",
   "version": "0.1.0",
-  "description": "edgelock Egress Worker — default-deny outbound proxy that enforces Broker decisions and injects brokered identity.",
+  "description": "zeroness Egress Worker — default-deny outbound proxy that enforces Broker decisions and injects brokered identity.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",

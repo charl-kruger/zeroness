@@ -1,19 +1,19 @@
-# edgelock — a capability & identity mesh for Cloudflare Sandboxes
+# zeroness — a capability & identity mesh for Cloudflare Sandboxes
 
-> **edgelock** — the governed edge between untrusted code inside a sandbox and
-> the trusted world outside. Published as `@edgelock/*` (Apache-2.0).
+> **zeroness** — the governed edge between untrusted code inside a sandbox and
+> the trusted world outside. Published as `@zeroness/*` (Apache-2.0).
 
 **Thesis.** Cloudflare already has the two halves of the best possible sandbox
 platform — a code-execution layer (**Cloudflare Sandbox**) and a capability
 governance layer (**Cloudflare OS / Gatekeepers**) — but they live in different
-worlds and don't talk. Edgelock is the open-source library that fuses them: it
+worlds and don't talk. Zeroness is the open-source library that fuses them: it
 gives any Cloudflare Sandbox a **programmable egress firewall**, **brokered
 short-lived identity (no secrets in the sandbox)**, and **capability-token
 resource access**, governed by the same Gatekeeper/human-in-the-loop model. These
 are precisely the mechanisms that make Vercel Sandbox differentiated — rebuilt
 Cloudflare-native, generalized, and made public.
 
-Edgelock transfers **architecture lessons** (design patterns: capability tokens,
+Zeroness transfers **architecture lessons** (design patterns: capability tokens,
 egress mediation, audience-bound token brokering, signed control channels) — not
 any code, exploit, or proprietary material. All of these are established,
 industry-standard security patterns; the value is assembling them into one
@@ -81,7 +81,7 @@ The six mechanisms that make it differentiated (see `vercel-sandbox-reconstructi
 > resources by capability" — and unify it with Cloudflare OS's Gatekeepers.**
 
 Today a Cloudflare Sandbox is a black box that either can or can't reach the
-internet, and whose secrets you smuggle in as env vars. Edgelock makes the
+internet, and whose secrets you smuggle in as env vars. Zeroness makes the
 sandbox a **zero-trust process**: it starts with **zero network + zero
 credentials**, and every outbound call is mediated by a policy engine and an
 identity broker that are the *same* capability substrate Cloudflare OS uses for
@@ -91,19 +91,19 @@ approve — exactly which hosts it reached and which of *your* credentials (neve
 exposed to it) were used.
 
 Nobody ships this as an open library. Vercel has it but closed and platform-
-locked. Cloudflare has both halves but unconnected. Edgelock is the missing seam.
+locked. Cloudflare has both halves but unconnected. Zeroness is the missing seam.
 
 ---
 
 ## 3. Vercel insight → Cloudflare-native mechanism (the mapping)
 
-| Vercel mechanism | Edgelock on Cloudflare | Built from |
+| Vercel mechanism | Zeroness on Cloudflare | Built from |
 |---|---|---|
-| Per-sandbox MITM egress firewall (SNI/host/path policy, transforms) | **Egress Worker** in front of the sandbox: all outbound HTTP is already interceptable; Edgelock adds a declarative **NetworkPolicy** engine (allow/deny by host+path+method, rewrite, forwardURL). Optional TLS interception via a per-sandbox CA injected into the container trust store. | Workers, the existing "intercept outbound HTTP" hook, `fetch()` |
+| Per-sandbox MITM egress firewall (SNI/host/path policy, transforms) | **Egress Worker** in front of the sandbox: all outbound HTTP is already interceptable; Zeroness adds a declarative **NetworkPolicy** engine (allow/deny by host+path+method, rewrite, forwardURL). Optional TLS interception via a per-sandbox CA injected into the container trust store. | Workers, the existing "intercept outbound HTTP" hook, `fetch()` |
 | OIDC-brokered, audience-bound identity (no secrets in sandbox) | **Identity Broker**: sandbox references an upstream by a **capability handle**; the broker mints/attaches a short-lived, `aud`-bound token at egress time. Backed by Cloudflare **Access service tokens / mTLS / Workers OIDC**, and unified with **Gatekeeper** OAuth for SaaS. | Cloudflare Access, `SignJWT`, Gatekeepers |
 | Drives = opaque capability tokens | **Resource capabilities**: R2/D1/KV/Queues/secrets exposed to the sandbox as **opaque handles** (`cap_...`); the real binding/credential lives in the broker DO. The sandbox reads/writes via a local proxy FS/endpoint keyed by the handle — never sees keys. | Durable Objects, R2/D1 bindings, a FUSE/HTTP shim in-container |
 | Signed control channel (ed25519) | **Signed command envelope**: the controlling Worker signs each `exec`/`runCode` with a per-session key; an in-sandbox **agent** verifies before running. Detects a compromised control path and enables offline audit. | WebCrypto Ed25519, the sandbox agent |
-| microVM-is-the-boundary honesty | **Isolation posture doc + defense-in-depth**: since CF Sandbox's substrate is container-based, Edgelock leans the governance layer harder (egress + identity are the real perimeter) and ships an **attestation/heartbeat** so the control plane can detect a wedged/compromised sandbox. Optionally target stronger substrates as they appear. | policy + attestation |
+| microVM-is-the-boundary honesty | **Isolation posture doc + defense-in-depth**: since CF Sandbox's substrate is container-based, Zeroness leans the governance layer harder (egress + identity are the real perimeter) and ships an **attestation/heartbeat** so the control plane can detect a wedged/compromised sandbox. Optionally target stronger substrates as they appear. | policy + attestation |
 | Snapshot/resume to object storage | **fork()/snapshot()** helpers: checkpoint sandbox FS state to R2, content-addressed, resume/branch — a clean lifecycle API over the DO-backed sandbox. | R2, DO |
 | — (new) Gatekeeper bridge | **Human-in-the-loop egress**: a policy verdict can be `ask` → routes to a Gatekeeper-style async approval (simulate-then-apply), so risky calls from untrusted code get a human gate. | Cloudflare OS Gatekeeper model |
 
@@ -114,12 +114,12 @@ locked. Cloudflare has both halves but unconnected. Edgelock is the missing seam
 ```
         ┌──────────────────────────────────────────────────────────────┐
         │  Your Worker (control plane)                                   │
-        │    edgelock.sandbox(id, policy)  →  session key (Ed25519)       │
+        │    zeroness.sandbox(id, policy)  →  session key (Ed25519)       │
         └───────────────┬──────────────────────────────────────────────┘
                         │ signed commands (exec/runCode/writeFile)
                         ▼
    ┌───────────────────────────────────┐        ┌──────────────────────────┐
-   │  Edgelock Broker  (Durable Object)  │◄──────►│  Gatekeepers (CF OS)     │
+   │  Zeroness Broker  (Durable Object)  │◄──────►│  Gatekeepers (CF OS)     │
    │  - NetworkPolicy engine            │  authz │  OAuth · human-in-loop   │
    │  - Identity broker (mint tokens)   │        └──────────────────────────┘
    │  - Capability registry (cap_… → binding)                              │
@@ -129,8 +129,8 @@ locked. Cloudflare has both halves but unconnected. Edgelock is the missing seam
                         ▼                                     ▼
    ┌──────────────────────────────────────────────────────────────────────┐
    │  Cloudflare Sandbox (Container, full Linux)                            │
-   │   ┌──────────────┐   all outbound HTTP ─► Edgelock Egress Worker ───►   │
-   │   │ edgelockd      │   (policy check, TLS-MITM opt, token inject, audit)│
+   │   ┌──────────────┐   all outbound HTTP ─► Zeroness Egress Worker ───►   │
+   │   │ zeronessd      │   (policy check, TLS-MITM opt, token inject, audit)│
    │   │ (in-sandbox   │   resource I/O ─► capability proxy (R2/D1/KV/secret)│
    │   │  agent)       │   verifies signed commands · reports heartbeat     │
    │   └──────────────┘   preview URLs · terminal · watch (pass-through)    │
@@ -138,28 +138,28 @@ locked. Cloudflare has both halves but unconnected. Edgelock is the missing seam
 ```
 
 **Components (all in the monorepo):**
-- `@edgelock/core` — the `EdgelockSandbox` wrapper over `@cloudflare/sandbox`,
+- `@zeroness/core` — the `ZeronessSandbox` wrapper over `@cloudflare/sandbox`,
   policy types, capability registry, session keys.
-- `@edgelock/broker` — the Durable Object: policy engine, identity broker, audit.
-- `@edgelock/egress` — the egress Worker (default-deny HTTP proxy, token
+- `@zeroness/broker` — the Durable Object: policy engine, identity broker, audit.
+- `@zeroness/egress` — the egress Worker (default-deny HTTP proxy, token
   injection, optional per-sandbox CA MITM, forwardURL rewriting).
-- `@edgelock/agent` (`edgelockd`) — tiny in-sandbox binary/script: verifies signed
+- `@zeroness/agent` (`zeronessd`) — tiny in-sandbox binary/script: verifies signed
   commands, exposes the capability proxy FS/endpoint, emits heartbeats.
-- `@edgelock/gatekeeper` — adapter that maps Edgelock `ask` verdicts and identity
+- `@zeroness/gatekeeper` — adapter that maps Zeroness `ask` verdicts and identity
   requests onto Cloudflare OS Gatekeepers.
-- `@edgelock/policy` — declarative policy authoring + a local simulator/linter.
+- `@zeroness/policy` — declarative policy authoring + a local simulator/linter.
 
 ---
 
 ## 5. The library API (developer surface)
 
 ```ts
-import { Edgelock } from "@edgelock/core";
+import { Zeroness } from "@zeroness/core";
 
-const edgelock = new Edgelock(env.SANDBOX, env.AIRLOCK_BROKER);
+const zeroness = new Zeroness(env.SANDBOX, env.AIRLOCK_BROKER);
 
 // zero network, zero credentials by default
-const box = await edgelock.sandbox("user-42", {
+const box = await zeroness.sandbox("user-42", {
   network: {
     default: "deny",
     allow: [
@@ -191,7 +191,7 @@ await box.writeFile("cap:reports://2026/q3.csv", csv);
 
 // lifecycle
 const snap = await box.snapshot();          // → content-addressed R2 ref
-const fork = await edgelock.resume(snap);     // branch a new box from it
+const fork = await zeroness.resume(snap);     // branch a new box from it
 
 // audit + control
 const trail = await box.audit();             // every egress + resource op, with verdicts
@@ -214,14 +214,14 @@ simulatable offline), **auditable** (every boundary crossing is a logged event).
 - **Capability opacity.** Resources are `cap:` handles; the sandbox cannot
   enumerate or forge bindings (registry lives in the broker; handles are random
   and per-session).
-- **Signed control channel.** Commands are Ed25519-signed per session; `edgelockd`
+- **Signed control channel.** Commands are Ed25519-signed per session; `zeronessd`
   refuses unsigned/stale commands (freshness nonce — improving on the Vercel gap
   where the timestamp wasn't freshness-checked).
 - **Human-in-the-loop for risky verdicts** via Gatekeepers (async simulate-then-
   apply), so untrusted code can't quietly exfiltrate or spend.
 - **Full audit trail** of every egress and resource op, exportable.
 - **Honest about the substrate.** We document that CF Sandbox isolation is
-  container-based and that Edgelock's perimeter is the *governance* layer; we add
+  container-based and that Zeroness's perimeter is the *governance* layer; we add
   heartbeat/attestation so a wedged sandbox is detectable, and we recommend one
   tenant per sandbox (Vercel's lesson).
 
@@ -229,7 +229,7 @@ simulatable offline), **auditable** (every boundary crossing is a logged event).
 
 ## 7. Roadmap (phased, shippable increments)
 
-**Phase 0 — spike (2–3 wks).** `@edgelock/core` wrapper + `@edgelock/egress`
+**Phase 0 — spike (2–3 wks).** `@zeroness/core` wrapper + `@zeroness/egress`
 default-deny HTTP proxy with a basic allow-list. Prove: a sandbox with no
 network can `pip install` only from an allow-listed host. Public repo + demo.
 
@@ -241,7 +241,7 @@ Demo: sandbox calls Stripe with zero secrets in the box.
 the in-sandbox capability proxy; opaque, prefix-scoped. Demo: agent reads/writes
 R2 by handle, never sees keys.
 
-**Phase 3 — signed channel + attestation (2–3 wks).** `edgelockd` verifies signed
+**Phase 3 — signed channel + attestation (2–3 wks).** `zeronessd` verifies signed
 commands with freshness nonces; heartbeat + audit stream.
 
 **Phase 4 — Gatekeeper bridge + human-in-the-loop (3–4 wks).** `ask` verdicts →
@@ -251,7 +251,7 @@ CF OS Gatekeepers; async approve/deny; simulate-then-apply.
 to R2; offline policy linter/simulator; TLS-MITM option with per-sandbox CA.
 
 **Phase 6 — hardening & 1.0.** Fuzz the egress parser, threat-model doc, red-team
-the capability registry, docs site, `create-edgelock` starter.
+the capability registry, docs site, `create-zeroness` starter.
 
 ---
 
@@ -260,7 +260,7 @@ the capability registry, docs site, `create-edgelock` starter.
 - **vs. raw Cloudflare Sandbox:** turns a bare execution box into a zero-trust,
   governed, auditable process — the difference between "run this code" and "run
   this code *on behalf of a user, with these exact powers, and prove it.*"
-- **vs. Vercel Sandbox:** open-source, portable, and *more* — Edgelock unifies
+- **vs. Vercel Sandbox:** open-source, portable, and *more* — Zeroness unifies
   network governance with an app-level capability/human-in-the-loop model (via
   Gatekeepers) that Vercel doesn't expose, and closes the signing-freshness gap
   we found in Vercel's own channel.
@@ -276,10 +276,10 @@ the capability registry, docs site, `create-edgelock` starter.
 
 - **Monorepo** (`pnpm` workspaces, mirrors CF OS conventions): `packages/core`,
   `broker`, `egress`, `agent`, `gatekeeper`, `policy`, plus `examples/` and
-  `create-edgelock`.
+  `create-zeroness`.
 - **License:** Apache-2.0 (matches cloudflare-os; friendly to Cloudflare
   upstreaming).
-- **Distribution:** npm `@edgelock/*`; one-command `wrangler`-deployable demo;
+- **Distribution:** npm `@zeroness/*`; one-command `wrangler`-deployable demo;
   docs site; a `wrangler`-native template.
 - **Community:** clear threat model + security policy up front; typed policy
   schema; a public policy gallery (github/openai/stripe/internal presets).

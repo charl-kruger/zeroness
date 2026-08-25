@@ -12,7 +12,7 @@ describe("network policy engine", () => {
       { host: "*.pythonhosted.org" },
       { host: "api.stripe.com", verdict: "ask", identity: "cap:stripe-ro" },
     ],
-    transform: [{ host: "api.github.com", rewrite: { headers: { "user-agent": "edgelock" } } }],
+    transform: [{ host: "api.github.com", rewrite: { headers: { "user-agent": "zeroness" } } }],
   };
 
   it("denies by default", () => {
@@ -46,6 +46,6 @@ describe("network policy engine", () => {
 
   it("layers transforms onto an allowed request", () => {
     const d = evaluate(policy, req("api.github.com", "/repos/a/b"));
-    expect(d.rewrite?.headers?.["user-agent"]).toBe("edgelock");
+    expect(d.rewrite?.headers?.["user-agent"]).toBe("zeroness");
   });
 });

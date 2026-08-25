@@ -1,9 +1,9 @@
 {
-  "name": "@edgelock/agent",
+  "name": "@zeroness/agent",
   "version": "0.1.0",
-  "description": "edgelockd — in-sandbox agent: verifies signed commands, serves capability I/O, heartbeats.",
+  "description": "zeronessd — in-sandbox agent: verifies signed commands, serves capability I/O, heartbeats.",
   "license": "Apache-2.0",
   "type": "module",
-  "bin": { "edgelockd": "src/edgelockd.mjs" },
+  "bin": { "zeronessd": "src/zeronessd.mjs" },
   "files": ["src"]
 }

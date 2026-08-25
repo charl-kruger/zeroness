@@ -1,7 +1,7 @@
 {
-  "name": "@edgelock/broker",
+  "name": "@zeroness/broker",
   "version": "0.1.0",
-  "description": "edgelock Broker — the trust-root Durable Object: policy eval, per-request identity minting, capability resolution, audit.",
+  "description": "zeroness Broker — the trust-root Durable Object: policy eval, per-request identity minting, capability resolution, audit.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -11,6 +11,6 @@
     "deploy": "wrangler deploy",
     "test": "echo 'no tests yet'"
   },
-  "dependencies": { "@edgelock/core": "workspace:*" },
+  "dependencies": { "@zeroness/core": "workspace:*" },
   "devDependencies": { "wrangler": "^3.80.0" }
 }

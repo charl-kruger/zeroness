@@ -1,13 +1,13 @@
 {
-  "name": "@edgelock/example-governed-sandbox",
+  "name": "@zeroness/example-governed-sandbox",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
   "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
   "dependencies": {
-    "@edgelock/core": "workspace:*",
-    "@edgelock/broker": "workspace:*",
+    "@zeroness/core": "workspace:*",
+    "@zeroness/broker": "workspace:*",
     "@cloudflare/sandbox": "^0.1.0"
   },
   "devDependencies": { "wrangler": "^3.80.0" }

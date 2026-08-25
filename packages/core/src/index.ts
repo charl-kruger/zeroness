@@ -1,5 +1,5 @@
-export { Edgelock, EdgelockSandbox } from "./edgelock";
-export type { EdgelockOptions, EdgelockConfig, CfSandbox, GetSandbox } from "./edgelock";
+export { Zeroness, ZeronessSandbox } from "./zeroness";
+export type { ZeronessOptions, ZeronessConfig, CfSandbox, GetSandbox } from "./zeroness";
 export { evaluate } from "./policy";
 export type { NetworkPolicy, Rule, Verdict, Decision, RequestInfo } from "./policy";
 export { parseCap, isCap, mintOpaqueToken } from "./capabilities";
