@@ -1,4 +1,4 @@
-# @zeroness/agent — `zeronessd`
+# @zeroness/agent, `zeronessd`
 
 The tiny in-sandbox agent. It is the counterpart to the signed command channel
 and the capability proxy. Ships as a single static binary/script baked into the
@@ -18,5 +18,5 @@ Responsibilities:
   (content-addressed) via the Broker; `restore` pulls one back.
 
 Status: **Phase 3 scaffold.** `zeronessd.mjs` sketches the verify loop; the
-transport (how signed envelopes reach the agent — a localhost control socket vs.
+transport (how signed envelopes reach the agent, a localhost control socket vs.
 riding on the exec channel) is the main open wiring decision.

@@ -64,7 +64,7 @@ interface Rule {
   methods?: string[];    // omit = all
   path?: string;         // glob: "*" within a segment, "**" across segments
   verdict?: Verdict;     // default "allow" in allow[], "deny" in deny[]
-  identity?: string;     // "cap:<name>" — brokered token injected on egress
+  identity?: string;     // "cap:<name>", brokered token injected on egress
   forwardURL?: string;   // re-origin to a trusted gateway
   rewrite?: { headers?: Record<string, string | null>; path?: string }; // null header = delete
 }
@@ -120,7 +120,7 @@ class ApprovalStore {
   deny(id, by?, now?): Approval | undefined;
   isGranted(method, url, now?): boolean; // a live grant covers this request?
   sweep(now?): void;                     // drop expired grants
-  state: ApprovalState;                  // serializable — persisted by the Broker DO
+  state: ApprovalState;                  // serializable, persisted by the Broker DO
 }
 approvalKey(method, url): string
 emptyApprovalState(): ApprovalState
@@ -141,7 +141,7 @@ installCACommand(certPem: string): string   // shell to trust the CA in a Debian
 
 ## `@zeroness/broker` (Durable Object)
 
-`class ZeronessBroker` — deployed as a Worker; addressed by binding, keyed per
+`class ZeronessBroker`, deployed as a Worker; addressed by binding, keyed per
 session token. HTTP surface (called by core and the Egress Worker):
 
 | Method + path | Purpose |
@@ -171,7 +171,7 @@ Default-export fetch handler. Routes:
 
 `Env`: `ZERONESS_BROKER: DurableObjectNamespace`.
 
-## `@zeroness/agent` — `zeronessd`
+## `@zeroness/agent`, `zeronessd`
 
 In-sandbox HTTP agent (default `127.0.0.1:9787`). Boot env (injected by core):
 `ZERONESS_PUBKEY`, `ZERONESS_SESSION`, `ZERONESS_EGRESS_URL`, `ZERONESS_CAPS`,

@@ -35,7 +35,7 @@ npx wrangler secret put STRIPE_RO --name zeroness-broker
 
 ## 4. Deploy the Egress Worker (enforcement)
 
-It binds the Broker DO by `script_name` — deploy the Broker first.
+It binds the Broker DO by `script_name`, deploy the Broker first.
 
 ```bash
 pnpm -C packages/egress deploy
@@ -50,7 +50,7 @@ pnpm -C examples/governed-sandbox deploy
 # note its URL, e.g. https://zeroness-example.<acct>.workers.dev
 ```
 
-## 6. Validate (Phase 0 — the load-bearing proof)
+## 6. Validate (Phase 0, the load-bearing proof)
 
 ```bash
 node scripts/validate.mjs https://zeroness-example.<acct>.workers.dev
@@ -68,7 +68,7 @@ Expected:
 ```
 
 If **default-deny does NOT block example.com**, the sandbox has a network path
-that bypasses the Egress Worker — that is the single most important thing to
+that bypasses the Egress Worker, that is the single most important thing to
 learn, and it tells you the egress steering (proxy env / outbound-intercept)
 isn't capturing all traffic yet. Fix the steering before trusting the network
 policy. (See `SECURITY.md` → Residual risks.)
