@@ -1,81 +1,88 @@
 <h1 align="center">zeroness</h1>
-<p align="center"><strong>A capability & identity mesh for Cloudflare Sandboxes.</strong><br>
-Give untrusted code a real Linux box — and still control, broker, and audit every
-credential it uses and every host it reaches.</p>
+<p align="center"><strong>Run untrusted code on Cloudflare — with zero network and zero secrets by default.</strong></p>
+<p align="center">
+  <a href="https://www.npmjs.com/package/@zeroness/core"><img alt="npm" src="https://img.shields.io/npm/v/@zeroness/core?color=%23111"></a>
+  <img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue">
+  <img alt="tests" src="https://img.shields.io/badge/tests-44%20passing-brightgreen">
+</p>
 
 <p align="center">
-  <code>default-deny network</code> · <code>zero secrets in the sandbox</code> ·
+  <code>default-deny egress</code> · <code>no secrets in the sandbox</code> ·
   <code>capability-scoped resources</code> · <code>signed commands</code> ·
-  <code>full audit</code>
+  <code>human-in-the-loop</code> · <code>full audit</code>
 </p>
 
 ---
 
-## Why
+zeroness wraps a [Cloudflare Sandbox](https://developers.cloudflare.com/sandbox/)
+so that untrusted or AI-generated code starts with **no internet and no
+credentials**, and you grant exactly what it needs — specific hosts, specific
+resources, specific identities — while every boundary crossing is brokered and
+logged. It's the safety layer for "let the agent run code."
 
-Running AI-generated / untrusted code is the defining workload of the moment, and
-the hard part isn't *isolating* it — Cloudflare Sandbox, E2B, Modal and Fly all
-do that. The hard part is **giving isolated code trusted powers safely**: letting
-an agent call your Stripe API, read one R2 prefix, or reach `api.github.com` —
-*without* handing it your keys or the open internet.
+## Install
 
-Cloudflare already ships both halves of the answer and hasn't connected them:
+```bash
+pnpm add @zeroness/core @zeroness/broker @cloudflare/sandbox
+# deploy the two Workers (Broker + Egress) once — see DEPLOY.md
+```
 
-- **Cloudflare Sandbox** — real Linux code execution, and a raw hook to
-  "intercept outbound HTTP."
-- **Cloudflare OS / Gatekeepers** — capability-based, zero-permission,
-  human-in-the-loop governance — but only at the OAuth/SaaS layer.
+Or scaffold a project:
 
-**zeroness is the missing seam.** It pushes Gatekeeper-style governance down onto
-the code-execution layer, using proven zero-trust network-and-identity techniques —
-built Cloudflare-native, generalized, and open.
+```bash
+pnpm create zeroness my-app
+```
 
-## What you get
+## 60-second example
 
 ```ts
 import { getSandbox } from "@cloudflare/sandbox";
 import { Zeroness } from "@zeroness/core";
+export { ZeronessBroker } from "@zeroness/broker";
 
-const zeroness = new Zeroness({
-  sandboxBinding: env.Sandbox,
-  broker: env.ZERONESS_BROKER,
-  egressUrl: env.EGRESS_URL,
-  getSandbox,
-});
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const zeroness = new Zeroness({
+      sandboxBinding: env.Sandbox,
+      broker: env.ZERONESS_BROKER,
+      egressUrl: env.EGRESS_URL,
+      getSandbox,
+    });
 
-const box = await zeroness.sandbox("user-42", {
-  network: {
-    default: "deny",                                   // no internet unless allowed
-    allow: [
-      { host: "pypi.org" }, { host: "*.pythonhosted.org" },     // let pip work
-      { host: "api.github.com", methods: ["GET"], path: "/repos/**" },
-      { host: "api.stripe.com", verdict: "ask", identity: "cap:stripe-ro" }, // gated + brokered
-    ],
+    const box = await zeroness.sandbox("user-42", {
+      network: {
+        default: "deny",                                            // no internet…
+        allow: [
+          { host: "pypi.org" }, { host: "*.pythonhosted.org" },     // …except pip
+          { host: "api.github.com", methods: ["GET"], path: "/repos/**" },
+          { host: "api.stripe.com", identity: "cap:stripe" },       // authed, no key in the box
+        ],
+      },
+      resources: {
+        "cap:stripe":  { accessToken: "STRIPE_RO" },                // lives in the Broker only
+        "cap:reports": { r2: "reports", mode: "rw", prefix: "user-42/" },
+      },
+    });
+
+    try {
+      await box.exec("pip install requests && python analyze.py");  // signed + governed
+      await box.writeFile("cap:reports://out.json", "{}");          // code never sees keys
+      return Response.json({ audit: await box.audit() });           // every crossing, logged
+    } finally {
+      await box.destroy();                                          // revoke the session
+    }
   },
-  resources: {
-    "cap:stripe-ro": { accessToken: "STRIPE_RO" },     // lives in the Broker, never in the box
-    "cap:reports":   { r2: "reports", mode: "rw", prefix: "user-42/" },
-  },
-});
-
-await box.exec("pip install pandas && python analyze.py"); // signed + governed
-await box.writeFile("cap:reports://q3.csv", csv);          // code never sees keys
-const trail = await box.audit();                           // every crossing, logged
+};
 ```
 
-- **Default-deny egress.** The sandbox reaches only the hosts/paths/methods you
-  allow. `pip install` works because you allow-listed PyPI — nothing else does.
-- **No secrets in the sandbox.** Credentials live only in the Broker; the Egress
-  Worker injects short-lived, audience-bound identity **at the moment of egress**.
-  Dump the sandbox filesystem and you get nothing reusable.
-- **Capability-scoped resources.** R2/D1/KV/secrets are opaque `cap:` handles;
-  the code can't enumerate or forge bindings.
-- **Human-in-the-loop.** A rule can be `ask` → routed to a Gatekeeper approval.
-- **Signed command channel.** Every command is Ed25519-signed with body-hash +
-  freshness + replay protection (closing gaps we found in the pattern's originator).
-- **Drop-in.** Same shape as `@cloudflare/sandbox`.
+- **Default-deny egress** — the sandbox reaches only the hosts/paths/methods you allow.
+- **No secrets in the sandbox** — the Broker injects short-lived, audience-bound identity at the moment of egress. Dump the filesystem and you get nothing reusable.
+- **Capability-scoped resources** — R2/D1/KV/secrets are opaque `cap:` handles; the code can't enumerate or forge bindings.
+- **Human-in-the-loop** — a rule can be `ask`, routed to an approval before the call proceeds.
+- **Signed command channel** — every command is Ed25519-signed (body-hash + freshness + replay protection) and verified by the in-sandbox agent.
+- **Drop-in** — the same surface as `@cloudflare/sandbox`.
 
-## Architecture
+## How it works
 
 ```
  your Worker ──signed cmds──►  Zeroness  ──►  Cloudflare Sandbox (Linux)
@@ -89,82 +96,45 @@ const trail = await box.audit();                           // every crossing, lo
                             └────────────┘
 ```
 
-- `@zeroness/core` — the `Zeroness` wrapper, policy engine, capability handles, signing.
-- `@zeroness/egress` — default-deny outbound proxy Worker (enforces Broker decisions).
-- `@zeroness/broker` — the trust-root Durable Object (the only component with secrets).
-- `@zeroness/agent` — `zeronessd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
-- `@zeroness/gatekeeper` — human-in-the-loop approval state machine + adapters (webhook, Cloudflare OS).
-- `@zeroness/tls` — opt-in per-session MITM certificate authority.
-- `@zeroness/policy` — author, **lint**, and **simulate** policies offline.
-- `create-zeroness` — `pnpm create zeroness my-app` scaffolds a governed sandbox.
+Your Worker drives the sandbox with **signed commands**. All egress is routed
+through the **Egress Worker**, which asks the **Broker** (a Durable Object — the
+only component that holds secrets) to authorize each request and mint identity.
+Inside the sandbox, **`zeronessd`** verifies commands and proxies capability I/O.
 
-## Quickstart
+## Packages
 
-```bash
-pnpm install
-pnpm build
-pnpm -C packages/core test          # the policy engine is unit-tested
+| Package | What it is |
+|---------|-----------|
+| [`@zeroness/core`](./packages/core) | The `Zeroness` wrapper, network-policy engine, capability handles, Ed25519 signing |
+| [`@zeroness/broker`](./packages/broker) | The trust-root Durable Object (policy eval, per-request identity, capabilities, audit) |
+| [`@zeroness/egress`](./packages/egress) | Default-deny outbound Worker that enforces Broker decisions |
+| [`@zeroness/agent`](./packages/agent) | `zeronessd` — verifies signed commands, proxies caps, heartbeats |
+| [`@zeroness/policy`](./packages/policy) | Author, **lint**, and **simulate** policies offline |
+| [`@zeroness/gatekeeper`](./packages/gatekeeper) | Human-in-the-loop approval state machine + adapters |
+| [`@zeroness/tls`](./packages/tls) | Opt-in per-session MITM certificate authority |
+| [`create-zeroness`](./packages/create-zeroness) | `pnpm create zeroness my-app` scaffolder |
 
-# deploy the two Workers
-pnpm -C packages/broker deploy
-pnpm -C packages/egress deploy
-pnpm -C examples/governed-sandbox deploy
+## Documentation
 
-# scaffold your own, or validate a live deployment end-to-end
-pnpm create zeroness my-app
-node scripts/validate.mjs https://your-example.workers.dev
-```
-
-Author policy with confidence — it's just data:
-
-```ts
-import { lint, simulate, formatSimulation } from "@zeroness/policy";
-lint(myPolicy);                                  // catch foot-guns in CI
-console.log(formatSimulation(simulate(myPolicy, [
-  { host: "api.github.com", path: "/repos/a/b", method: "GET" },
-  { host: "evil.com", path: "/", method: "GET" },
-])));
-// ✓ GET api.github.com/repos/a/b → allow
-// ✗ GET evil.com/ → deny  (no allow rule; policy default=deny)
-```
-
-## Security model
-
-| Control | Protects | Fails if… |
-|---|---|---|
-| default-deny egress | the sandbox's reach | a route bypasses the Egress Worker |
-| Broker-held secrets + per-request injection | credential exposure | the Broker DO is compromised |
-| `cap:` capability handles | resource isolation | a handle is guessable *(they're random, per-session)* |
-| Ed25519 signed commands | the control channel | the session private key leaks *(never enters the box)* |
-| `ask` + Gatekeepers | silent exfiltration/spend | approvals are auto-granted |
-| audit log | blind spots | the Broker log is tampered |
-
-See [`PLAN.md`](./PLAN.md) for the full design, roadmap, and the mapping from each
-design pattern to its Cloudflare-native mechanism.
-See [`SECURITY.md`](./SECURITY.md) for the threat model, assumptions, and residual risks.
+- **[AGENTS.md](./AGENTS.md)** — deep, imperative guide for an AI agent using zeroness (and working in this repo).
+- **[docs/concepts.md](./docs/concepts.md)** — the mental model.
+- **[docs/api-reference.md](./docs/api-reference.md)** — full API surface for every package.
+- **[docs/recipes.md](./docs/recipes.md)** — task-oriented examples.
+- **[DEPLOY.md](./DEPLOY.md)** — deploy the Workers + validate on live Cloudflare.
+- **[SECURITY.md](./SECURITY.md)** — threat model, assumptions, residual risks.
 
 ## Status
 
-Implemented and unit-tested (44 tests, incl. an in-process Broker integration suite): the **policy engine**, **Ed25519 signed
-command channel**, **capability handles**, the **Egress Worker**, the **Broker**
-(policy eval + per-request identity minting + R2/D1/KV capabilities + content-
-addressed snapshots + audit), **human-in-the-loop approvals** (`@zeroness/gatekeeper`),
-and the **`zeronessd` agent** (verifies every signed command before running it).
+Pre-1.0. Everything is implemented and unit-tested (44 tests, incl. an in-process
+Broker integration suite). The one open item is **live validation against a real
+Cloudflare Sandbox** — zeroness routes egress via `HTTP(S)_PROXY` + Cloudflare's
+outbound-intercept, and whether *all* traffic is captured must be proven on live
+infra (`scripts/validate.mjs` + [`DEPLOY.md`](./DEPLOY.md) make it one command).
+Treat the network guarantee as "HTTP(S) via the proxy" until you've validated it.
 
-Remaining: the one open item is **live validation against a real Cloudflare
-Sandbox** (its outbound-intercept internals are undocumented, so routing all
-egress through the Worker must be proven end-to-end). A turnkey harness
-(`scripts/validate.mjs`) and runbook (`DEPLOY.md`) are ready for the moment you
-have a Workers-Paid account. TLS termination at the interception point is the
-only other partial (the CA machinery in `@zeroness/tls` is done and tested).
+## Contributing & releases
 
-## A note on provenance
-
-zeroness transfers **architecture patterns** — capability tokens, egress
-mediation, audience-bound token brokering, signed control channels — all
-established zero-trust practice. It contains no code, exploit, or proprietary
-material from any third party. Designed to be **upstreamable** into Cloudflare,
-not adversarial.
+`pnpm install && pnpm -r build && pnpm -r test`. See [RELEASING.md](./RELEASING.md).
 
 ## License
 
