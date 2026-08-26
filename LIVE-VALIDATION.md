@@ -68,16 +68,22 @@ per-container MITM (the Cloudflare containers CA) and handed to the Worker
 handler. `enableInternet = false` means there is no direct route out, so nothing
 escapes the handler.
 
-Operational note: because interception MITMs TLS with the Cloudflare containers
-CA, in-container HTTPS clients must trust `/etc/cloudflare/certs/cloudflare-containers-ca.crt`.
+Operational note (verified): interception MITMs TLS with the Cloudflare
+containers CA, present at runtime at
+`/etc/cloudflare/certs/cloudflare-containers-ca.crt`. On the standard
+`cloudflare/sandbox` base image that CA is **already in the trust store**, so a
+plain in-container `curl https://<allowed-host>` (no `-k`) returns 200 and is
+governed — cooperative code needs no special handling. Verified live:
+`curl` with no flags to an allowed host returned 200, as did `curl --cacert
+/etc/cloudflare/certs/cloudflare-containers-ca.crt`.
 
-- For a **jail over untrusted code** this is fail-closed and desirable: code that
-  does not trust the CA simply cannot complete a TLS handshake, so it still
-  cannot reach the network except through the governed handler.
-- For **cooperative code** that should reach allowed hosts cleanly (no `curl -k`),
-  add the CA to the image trust store in the Dockerfile
-  (`update-ca-certificates`). The test above used `curl -k` only to isolate
-  "is the request intercepted and governed" from "does the client trust the CA".
+Enforcement does not depend on the CA: a denied host returns `403 blocked by
+policy` at the handler whether or not the client trusts the CA. The CA only
+affects whether an *allowed* host's TLS verifies cleanly. For a custom base image
+that does not ship the CA, point clients at that cert path (or add it to the
+trust store); a client that trusts nothing simply fails its handshake
+(fail-closed). The `-k` in the table above was only to isolate "is it intercepted
+and governed" from CA trust during debugging.
 
 ### Earlier finding, now resolved
 

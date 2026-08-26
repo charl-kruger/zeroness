@@ -1,7 +1,88 @@
 # Recipes
 
-Task-oriented patterns. Each assumes you've created a `zeroness` client and are
-inside a request handler. Copy the `config` shape into `zeroness.sandbox(id, config)`.
+Task-oriented patterns. Most assume you've created a `zeroness` client and are
+inside a request handler; copy the `config` shape into `zeroness.sandbox(id, config)`.
+The first recipe below is different: it is the enforced network jail, wired at the
+container class.
+
+## Enforce the network boundary over untrusted code (the jail)
+
+The policy recipes below describe what egress you *intend*. To make that boundary
+*enforceable* against untrusted in-container code — so a raw `curl` cannot bypass
+it, not just cooperative SDK fetches — define your container Durable Object with
+`createGovernedSandbox`. This is the configuration proven live in
+[`../LIVE-VALIDATION.md`](../LIVE-VALIDATION.md).
+
+```ts
+// src/index.ts (your Worker entrypoint)
+import { Sandbox as BaseSandbox, getSandbox, proxyToSandbox } from "@cloudflare/sandbox";
+import { createGovernedSandbox, registerGovernedSession } from "@zeroness/core";
+export { ContainerProxy } from "@cloudflare/containers";
+export { ZeronessBroker } from "@zeroness/broker";
+
+// enableInternet=false + interceptHttps=true + a Broker-backed catch-all outbound
+// handler. Export this as your container class.
+export const Sandbox = createGovernedSandbox(BaseSandbox);
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const proxied = await proxyToSandbox(req, env);
+    if (proxied) return proxied;
+
+    const id = "user-42";
+    await registerGovernedSession(env.ZERONESS_BROKER, env.Sandbox, id, {
+      policy: {
+        default: "deny",
+        allow: [
+          { host: "httpbingo.org", identity: "cap:echo" },  // authed, no key in the box
+          { host: "api.github.com", methods: ["GET"], path: "/repos/**" },
+        ],
+      },
+      resources: { echo: { accessToken: env.ECHO_TOKEN } }, // resolved by the Broker only
+    });
+
+    const box = getSandbox(env.Sandbox, id);
+    // A raw curl inside the container is intercepted and governed:
+    return Response.json(await box.exec("curl -s https://httpbingo.org/headers"));
+  },
+};
+```
+
+wrangler config needs the interception plumbing:
+
+```jsonc
+{
+  "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
+  "containers": [{ "class_name": "Sandbox", "image": "./Dockerfile", "instance_type": "standard" }],
+  "durable_objects": { "bindings": [
+    { "name": "Sandbox", "class_name": "Sandbox" },
+    { "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker", "script_name": "zeroness-broker" }
+  ]},
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }]
+}
+```
+
+Interception MITMs TLS with the Cloudflare containers CA. The standard
+`cloudflare/sandbox` base image **already trusts** it (verified: a plain
+`curl https://<allowed-host>` returns 200 and is governed), so a minimal
+Dockerfile is enough:
+
+```dockerfile
+FROM docker.io/cloudflare/sandbox:0.12.8
+EXPOSE 3000
+```
+
+Only if you build on a base image that does not ship that CA do clients need to
+point at it (the cert is at `/etc/cloudflare/certs/cloudflare-containers-ca.crt`
+at runtime), e.g. `CURL_CA_BUNDLE` / `NODE_EXTRA_CA_CERTS`, or by adding it to
+the trust store. A client that trusts nothing fails its handshake (fail-closed);
+enforcement of denied hosts does not depend on the CA either way.
+
+Result (proven live): allowed hosts return 200 with brokered identity injected,
+every other host returns `403 zeroness: blocked by policy`, and every crossing is
+audited. An `ask` rule returns `451` until approved.
+
+## Let an agent install packages, nothing else
 
 ## Let an agent install packages, nothing else
 

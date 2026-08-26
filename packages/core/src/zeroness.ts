@@ -83,9 +83,14 @@ export class Zeroness {
     // 2. Attach to the underlying Cloudflare Sandbox.
     const cf = await this.opts.getSandbox(this.opts.sandboxBinding, id);
 
-    // 3. Steer ALL egress through the Egress Worker, authenticated as this
-    //    session. Cloudflare Sandbox's outbound-intercept forwards to this URL;
-    //    the proxy env vars are the portable fallback for HTTP clients.
+    // 3. Point cooperative HTTP clients at the Egress Worker, authenticated as
+    //    this session. NOTE: these proxy env vars are a convenience for code that
+    //    honors HTTP(S)_PROXY, not a network jail — a process can ignore them and
+    //    reach the internet directly. To actually jail untrusted code so EVERY
+    //    outbound request is mediated (raw curl included), define your container
+    //    class with `createGovernedSandbox` (enableInternet=false +
+    //    interceptHttps=true + Broker-backed outbound handler). See
+    //    /LIVE-VALIDATION.md and docs/recipes.md.
     const proxy = new URL(this.opts.egressUrl);
     proxy.username = "zeroness";
     proxy.password = sessionToken;

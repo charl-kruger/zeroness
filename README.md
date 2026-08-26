@@ -81,6 +81,42 @@ export default {
 - **Signed command channel**: every command is Ed25519-signed (body-hash + freshness + replay protection) and verified by the in-sandbox agent.
 - **Drop-in**: the same surface as `@cloudflare/sandbox`.
 
+## Enforced network jail
+
+The example above is the control plane. To make the default-deny boundary
+enforceable against *untrusted* in-container code (so a raw `curl` cannot bypass
+it, not just cooperative SDK fetches), define your container Durable Object with
+`createGovernedSandbox`:
+
+```ts
+import { Sandbox as BaseSandbox, getSandbox } from "@cloudflare/sandbox";
+import { createGovernedSandbox, registerGovernedSession } from "@zeroness/core";
+export { ContainerProxy } from "@cloudflare/containers";
+export { ZeronessBroker } from "@zeroness/broker";
+
+// No direct internet + intercept ALL outbound HTTPS -> the Broker mediates every
+// request. Export this as your container class.
+export const Sandbox = createGovernedSandbox(BaseSandbox);
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    await registerGovernedSession(env.ZERONESS_BROKER, "user-42", {
+      policy: { default: "deny", allow: [{ host: "api.github.com", methods: ["GET"] }] },
+      resources: { gh: { accessToken: env.GH_TOKEN } }, // stays in the Broker
+    });
+    const box = getSandbox(env.Sandbox, "user-42");
+    return Response.json(await box.exec("curl -s https://api.github.com/repos/cloudflare/workers-sdk"));
+  },
+};
+```
+
+wrangler needs `enable_ctx_exports` in `compatibility_flags` and the
+`ContainerProxy` export above. Interception MITMs TLS with the Cloudflare
+containers CA; the standard `cloudflare/sandbox` base image already trusts it, so
+plain in-container HTTPS works cleanly and is still governed (a denied host is
+blocked at the handler regardless). Full recipe and the live proof:
+[`docs/recipes.md`](./docs/recipes.md), [`LIVE-VALIDATION.md`](./LIVE-VALIDATION.md).
+
 ## How it works
 
 ```
@@ -124,12 +160,23 @@ Inside the sandbox, **`zeronessd`** verifies commands and proxies capability I/O
 
 ## Status
 
-Pre-1.0. Everything is implemented and unit-tested (44 tests, incl. an in-process
-Broker integration suite). The one open item is **live validation against a real
-Cloudflare Sandbox**: zeroness routes egress via `HTTP(S)_PROXY` + Cloudflare's
-outbound-intercept, and whether *all* traffic is captured must be proven on live
-infra (`scripts/validate.mjs` + [`DEPLOY.md`](./DEPLOY.md) make it one command).
-Treat the network guarantee as "HTTP(S) via the proxy" until you've validated it.
+Pre-1.0. Everything is implemented and unit-tested, and the whole system is
+**validated live on real Cloudflare infrastructure** (Workers + Durable Objects +
+R2 + Containers). See [`LIVE-VALIDATION.md`](./LIVE-VALIDATION.md) for the proof.
+
+Proven live:
+
+- The governance control plane: default-deny, allow by host, method + path
+  enforcement, brokered identity injection, human-in-the-loop approvals, audit.
+- A **network jail over untrusted in-container code**: with `createGovernedSandbox`
+  (`enableInternet=false` + `interceptHttps=true` + a Broker-backed `outbound`
+  handler), every outbound request — a raw in-container `curl` included, not just
+  the SDK's own fetch — is intercepted at the container network layer and mediated
+  by the Broker. Allowed hosts get brokered identity; everything else is denied
+  and audited.
+
+The injected `HTTP(S)_PROXY` env vars are a convenience for cooperative HTTP
+clients, not the jail: use `createGovernedSandbox` for the enforced boundary.
 
 ## Contributing & releases
 

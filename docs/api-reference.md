@@ -93,6 +93,45 @@ isCap(uri): boolean
 mintOpaqueToken(): string                              // "zn_<48 hex>"
 ```
 
+### Governed sandbox (enforced network jail)
+
+The enforced network boundary over untrusted in-container code. Proven live
+(`LIVE-VALIDATION.md`). See [recipes.md](./recipes.md) for the full walkthrough.
+
+```ts
+// Wrap the @cloudflare/sandbox (or @cloudflare/containers) base class into a
+// governed container DO: enableInternet=false + interceptHttps=true + a
+// Broker-backed catch-all `outbound` handler. `base` is passed in so core keeps
+// no hard dependency on the SDK package.
+createGovernedSandbox(base, options?: GovernedSandboxOptions): typeof base
+
+interface GovernedSandboxOptions {
+  brokerBinding?: string;                 // env key for the Broker DO; default "ZERONESS_BROKER"
+  tokenFor?: (ctx: { sandboxId?: string }) => string; // default: `sandbox:<sandboxId>`
+}
+
+// Register a policy + resources for a sandbox id, under the same token the
+// governed `outbound` handler derives. Call before the sandbox makes a request.
+registerGovernedSession(
+  broker: DurableObjectNamespace,
+  sandboxId: string,
+  init: { policy: NetworkPolicy; resources?: ResourceMap; pubKey?: string },
+): Promise<{ handleTokens: Record<string, string> }>
+
+governedSessionToken(sandboxId: string): string  // "sandbox:<id>"
+makeOutboundHandler(options?): (req, env, ctx) => Promise<Response> // the handler alone
+```
+
+Requirements in wrangler config: `compatibility_flags` includes
+`enable_ctx_exports`, and the entrypoint does
+`export { ContainerProxy } from "@cloudflare/containers"`. Interception MITMs TLS
+with the Cloudflare containers CA (present at runtime at
+`/etc/cloudflare/certs/cloudflare-containers-ca.crt`); the standard
+`cloudflare/sandbox` base image already trusts it, so plain in-container HTTPS is
+clean and still governed. Enforcement does not depend on the CA — a denied host
+is blocked at the handler regardless. On a custom base image that lacks the CA,
+point clients at that cert path or a client that trusts nothing fails closed.
+
 ### Signing
 
 ```ts
@@ -181,6 +220,14 @@ to the Egress cap route). Heartbeats to the Broker via the Egress Worker.
 
 ## Injected sandbox environment
 
-When a session is created, core sets in the sandbox: `HTTP_PROXY`/`HTTPS_PROXY`
-(→ Egress Worker, session token as basic-auth password), `ZERONESS_SESSION`,
-`ZERONESS_PUBKEY`, `ZERONESS_EGRESS_URL`, `ZERONESS_CAPS`.
+When `Zeroness.sandbox()` creates a session, core sets in the sandbox:
+`HTTP_PROXY`/`HTTPS_PROXY` (→ Egress Worker, session token as basic-auth
+password), `ZERONESS_SESSION`, `ZERONESS_PUBKEY`, `ZERONESS_EGRESS_URL`,
+`ZERONESS_CAPS`.
+
+Note: the `HTTP(S)_PROXY` vars only steer clients that honor them; a process can
+ignore them and reach the network directly. They are a convenience for
+cooperative HTTP clients and the capability routes, **not** the enforced network
+jail. For an enforced boundary over untrusted code (raw `curl` included), use
+`createGovernedSandbox` (above), which mediates egress at the container network
+layer.

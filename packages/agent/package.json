@@ -1,12 +1,12 @@
 {
   "name": "@zeroness/agent",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/charl-kruger/zeroness.git",
     "directory": "packages/agent"
   },
-  "description": "zeronessd — in-sandbox agent: verifies signed commands, serves capability I/O, heartbeats.",
+  "description": "zeronessd \u2014 in-sandbox agent: verifies signed commands, serves capability I/O, heartbeats.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
