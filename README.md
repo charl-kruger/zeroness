@@ -170,8 +170,8 @@ Proven live:
   enforcement, brokered identity injection, human-in-the-loop approvals, audit.
 - A **network jail over untrusted in-container code**: with `createGovernedSandbox`
   (`enableInternet=false` + `interceptHttps=true` + a Broker-backed `outbound`
-  handler), every outbound request — a raw in-container `curl` included, not just
-  the SDK's own fetch — is intercepted at the container network layer and mediated
+  handler), every outbound request (a raw in-container `curl` included, not just
+  the SDK's own fetch) is intercepted at the container network layer and mediated
   by the Broker. Allowed hosts get brokered identity; everything else is denied
   and audited.
 

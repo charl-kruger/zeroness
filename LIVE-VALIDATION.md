@@ -73,7 +73,7 @@ containers CA, present at runtime at
 `/etc/cloudflare/certs/cloudflare-containers-ca.crt`. On the standard
 `cloudflare/sandbox` base image that CA is **already in the trust store**, so a
 plain in-container `curl https://<allowed-host>` (no `-k`) returns 200 and is
-governed — cooperative code needs no special handling. Verified live:
+governed, so cooperative code needs no special handling. Verified live:
 `curl` with no flags to an allowed host returned 200, as did `curl --cacert
 /etc/cloudflare/certs/cloudflare-containers-ca.crt`.
 

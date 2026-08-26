@@ -1,12 +1,12 @@
 /**
- * Governed sandbox — the network jail for untrusted in-container code.
+ * Governed sandbox, the network jail for untrusted in-container code.
  *
  * This is the mechanism proven live in /LIVE-VALIDATION.md. It turns a Cloudflare
  * Sandbox container into one whose entire outbound network is mediated by the
  * zeroness Broker:
  *
- *   - `enableInternet = false` — the container has NO direct route to the network.
- *   - `interceptHttps = true`  — ALL outbound HTTPS is terminated by a per-container
+ *   - `enableInternet = false`: the container has NO direct route to the network.
+ *   - `interceptHttps = true`: ALL outbound HTTPS is terminated by a per-container
  *     MITM and handed to the Worker, so even a raw in-container `curl` (any process,
  *     not just the SDK's own fetch) is intercepted at the network layer.
  *   - a catch-all `outbound` handler runs in the Worker (which has normal internet)
@@ -14,13 +14,16 @@
  *     allowed hosts, and audit every crossing.
  *
  * Untrusted code cannot bypass this: without a direct route, its only path out is
- * the handler, and a client that does not trust the interception CA simply fails
- * its TLS handshake (fail-closed).
+ * the handler. Enforcement of denied hosts does not depend on the interception CA
+ * (a denied host is blocked at the handler regardless). The standard
+ * cloudflare/sandbox base image already trusts the CA, so plain in-container HTTPS
+ * to allowed hosts verifies cleanly and is still governed; on a custom image that
+ * lacks the CA, a client that trusts nothing fails its handshake (fail-closed).
  *
  * Usage in your Worker entrypoint:
  *
- *   import { Sandbox as BaseSandbox } from "@cloudflare/sandbox";
- *   import { createGovernedSandbox } from "@zeroness/core";
+ *   import { Sandbox as BaseSandbox, getSandbox } from "@cloudflare/sandbox";
+ *   import { createGovernedSandbox, registerGovernedSession } from "@zeroness/core";
  *   export { ContainerProxy } from "@cloudflare/containers";
  *
  *   export const Sandbox = createGovernedSandbox(BaseSandbox);
@@ -29,9 +32,10 @@
  *   - compatibility_flags include "enable_ctx_exports"
  *   - `export { ContainerProxy } from "@cloudflare/containers"` in the entrypoint
  *
- * And register a policy for each sandbox id before it makes requests:
+ * And register a policy for each sandbox before it makes requests (pass the same
+ * name you give getSandbox, so both sides key on the same container id):
  *
- *   await registerGovernedSession(env.ZERONESS_BROKER, id, {
+ *   await registerGovernedSession(env.ZERONESS_BROKER, env.Sandbox, "user-1", {
  *     policy: { default: "deny", allow: [{ host: "api.github.com", methods: ["GET"] }] },
  *     resources: { gh: { accessToken: env.GH_TOKEN } },
  *   });
@@ -49,7 +53,7 @@ export interface GovernedEnv {
  * The `ctx` the container runtime passes to the static `outbound` handler.
  * `containerId` is the container Durable Object's id (`this.ctx.id.toString()`),
  * i.e. the stable value `registerGovernedSession` keys the session under. Note
- * there is no sandbox *name* here — the DO id is one-way, so both the handler and
+ * there is no sandbox *name* here, the DO id is one-way, so both the handler and
  * the registration side key on the id.
  */
 export interface OutboundCtx {
@@ -88,7 +92,7 @@ export function governedSessionToken(containerId: string): string {
 }
 
 /**
- * The container Durable Object id for a sandbox name, as a string — the value the
+ * The container Durable Object id for a sandbox name, as a string, the value the
  * outbound handler sees as `ctx.containerId` and the key a session is registered
  * under. `getSandbox(ns, name)` resolves to `ns.idFromName(name)`, so this matches.
  * (Use a DNS-safe name: lowercase, no leading/trailing hyphen.)
@@ -184,7 +188,7 @@ export interface RegisterGovernedSessionInit {
  * Register a policy + resources for a sandbox with the Broker, under the same
  * token the governed `outbound` handler derives (`sandbox:<containerId>`). Pass
  * the Sandbox binding and the same `name` you give `getSandbox(env.Sandbox, name)`
- * — the container DO id is computed from it so both sides agree. Call this before
+ *, the container DO id is computed from it so both sides agree. Call this before
  * the sandbox makes any request. Returns the Broker's session registration (cap
  * handle tokens).
  */

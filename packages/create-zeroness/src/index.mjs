@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * create-zeroness — scaffold a governed Cloudflare Sandbox in one command.
+ * create-zeroness, scaffold a governed Cloudflare Sandbox in one command.
  *
  *   npm create zeroness@latest my-app
  *   pnpm create zeroness my-app

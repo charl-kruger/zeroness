@@ -128,7 +128,7 @@ Requirements in wrangler config: `compatibility_flags` includes
 with the Cloudflare containers CA (present at runtime at
 `/etc/cloudflare/certs/cloudflare-containers-ca.crt`); the standard
 `cloudflare/sandbox` base image already trusts it, so plain in-container HTTPS is
-clean and still governed. Enforcement does not depend on the CA — a denied host
+clean and still governed. Enforcement does not depend on the CA: a denied host
 is blocked at the handler regardless. On a custom base image that lacks the CA,
 point clients at that cert path or a client that trusts nothing fails closed.
 

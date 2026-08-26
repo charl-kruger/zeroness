@@ -8,8 +8,8 @@ container class.
 ## Enforce the network boundary over untrusted code (the jail)
 
 The policy recipes below describe what egress you *intend*. To make that boundary
-*enforceable* against untrusted in-container code — so a raw `curl` cannot bypass
-it, not just cooperative SDK fetches — define your container Durable Object with
+*enforceable* against untrusted in-container code (so a raw `curl` cannot bypass
+it, not just cooperative SDK fetches), define your container Durable Object with
 `createGovernedSandbox`. This is the configuration proven live in
 [`../LIVE-VALIDATION.md`](../LIVE-VALIDATION.md).
 
