@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/charl-kruger/zeroness",
+    "url": "git+https://github.com/charl-kruger/zeroness.git",
     "directory": "packages/core"
   },
   "description": "Zero-trust wrapper, network policy engine, capability handles, and signed command channel for Cloudflare Sandboxes.",
@@ -30,5 +30,7 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "homepage": "https://github.com/charl-kruger/zeroness#readme",
+  "bugs": "https://github.com/charl-kruger/zeroness/issues"
 }

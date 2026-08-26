@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/charl-kruger/zeroness",
+    "url": "git+https://github.com/charl-kruger/zeroness.git",
     "directory": "packages/egress"
   },
   "description": "zeroness Egress Worker — default-deny outbound proxy that enforces Broker decisions and injects brokered identity.",
@@ -33,5 +33,7 @@
     "dist",
     "src",
     "wrangler.jsonc"
-  ]
+  ],
+  "homepage": "https://github.com/charl-kruger/zeroness#readme",
+  "bugs": "https://github.com/charl-kruger/zeroness/issues"
 }

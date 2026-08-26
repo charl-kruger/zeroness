@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/charl-kruger/zeroness",
+    "url": "git+https://github.com/charl-kruger/zeroness.git",
     "directory": "packages/create-zeroness"
   },
   "description": "Scaffold a governed Cloudflare Sandbox powered by zeroness.",
   "license": "Apache-2.0",
   "type": "module",
-  "bin": { "create-zeroness": "src/index.mjs" },
-  "files": ["src"]
+  "bin": {
+    "create-zeroness": "src/index.mjs"
+  },
+  "files": [
+    "src"
+  ],
+  "homepage": "https://github.com/charl-kruger/zeroness#readme",
+  "bugs": "https://github.com/charl-kruger/zeroness/issues"
 }
