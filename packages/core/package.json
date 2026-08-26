@@ -1,6 +1,11 @@
 {
   "name": "@zeroness/core",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charl-kruger/zeroness",
+    "directory": "packages/core"
+  },
   "description": "Zero-trust wrapper, network policy engine, capability handles, and signed command channel for Cloudflare Sandboxes.",
   "license": "Apache-2.0",
   "type": "module",

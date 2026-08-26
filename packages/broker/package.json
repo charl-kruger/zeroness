@@ -1,6 +1,11 @@
 {
   "name": "@zeroness/broker",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charl-kruger/zeroness",
+    "directory": "packages/broker"
+  },  
   "description": "zeroness Broker — the trust-root Durable Object: policy eval, per-request identity minting, capability resolution, audit.",
   "license": "Apache-2.0",
   "type": "module",

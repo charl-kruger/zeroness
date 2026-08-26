@@ -1,6 +1,11 @@
 {
   "name": "@zeroness/gatekeeper",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charl-kruger/zeroness",
+    "directory": "packages/gatekeeper"
+  },
   "description": "Human-in-the-loop approval state machine + adapters (webhook, Cloudflare OS) for zeroness `ask` verdicts.",
   "license": "Apache-2.0",
   "type": "module",
