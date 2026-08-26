@@ -29,7 +29,7 @@ const files = {
   "durable_objects": {
     "bindings": [
       { "name": "Sandbox", "class_name": "Sandbox" },
-      { "name": "EDGELOCK_BROKER", "class_name": "ZeronessBroker" }
+      { "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker" }
     ]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ZeronessBroker"] }],
@@ -43,7 +43,7 @@ export { ZeronessBroker } from "@zeroness/broker";
 
 export interface Env {
   Sandbox: DurableObjectNamespace;
-  EDGELOCK_BROKER: DurableObjectNamespace;
+  ZERONESS_BROKER: DurableObjectNamespace;
   EGRESS_URL: string;
 }
 
@@ -51,7 +51,7 @@ export default {
   async fetch(_req: Request, env: Env): Promise<Response> {
     const zeroness = new Zeroness({
       sandboxBinding: env.Sandbox,
-      broker: env.EDGELOCK_BROKER,
+      broker: env.ZERONESS_BROKER,
       egressUrl: env.EGRESS_URL,
       getSandbox,
     });

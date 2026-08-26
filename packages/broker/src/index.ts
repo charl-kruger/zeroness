@@ -50,6 +50,7 @@ export class ZeronessBroker {
       if (req.method === "GET" && path === "/approvals") return json(await this.listApprovals());
       const ap = path.match(/^\/approval\/([^/]+)(\/approve|\/deny)?$/);
       if (ap) return await this.approval(req.method, ap[1]!, ap[2], req);
+      if (req.method === "POST" && path === "/tls-ca") return await this.storeTlsCa(await req.json());
       if (req.method === "POST" && path === "/snapshot/upload") return await this.snapshotUpload(req);
       const sn = path.match(/^\/snapshot\/(snap_[0-9a-f]+)$/);
       if (req.method === "GET" && sn) return await this.snapshotGet(sn[1]!);
@@ -221,6 +222,13 @@ export class ZeronessBroker {
     }
 
     return json({ error: "capability type not yet wired (queue)" }, 501);
+  }
+
+  // ---- opt-in TLS interception CA (cert is public; key gates leaf issuance) ----
+  private async storeTlsCa(body: { certPem: string; keyPkcs8: number[] }): Promise<Response> {
+    await this.state.storage.put("tls-ca", body);
+    await this.append({ ts: Date.now(), event: "tls:ca-provisioned", detail: { certBytes: body.certPem.length } });
+    return new Response(null, { status: 204 });
   }
 
   // ---- snapshots: content-addressed to R2 ----

@@ -103,6 +103,18 @@ export class Zeroness {
     if (cf.setEnvVars) await cf.setEnvVars(env);
     else await cf.exec(`printf '%s\\n' ${Object.entries(env).map(([k, v]) => `'export ${k}=${shq(v)}'`).join(" ")} >> /etc/profile.d/zeroness.sh`);
 
+    // Opt-in TLS interception: mint a per-session CA, trust it in the sandbox,
+    // and hand the CA to the Broker (which issues leaves at the interception
+    // point). Loaded on demand so the X.509 dependency is only pulled when used.
+    if (config.tlsIntercept) {
+      let tls: typeof import("@zeroness/tls");
+      try { tls = await import("@zeroness/tls"); }
+      catch { throw new Error("tlsIntercept requires the optional @zeroness/tls package to be installed"); }
+      const ca = await tls.generateSessionCA({ commonName: `zeroness ${sessionId}` });
+      await cf.exec(tls.installCACommand(ca.certPem));
+      await this.broker(brokerKey, "POST", "/tls-ca", { certPem: ca.certPem, keyPkcs8: [...new Uint8Array(ca.keyPkcs8)] });
+    }
+
     return new ZeronessSandbox(sessionId, cf, keys.privateKey, config, (m, p, b) => this.broker(brokerKey, m, p, b));
   }
 

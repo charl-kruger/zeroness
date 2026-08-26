@@ -94,6 +94,7 @@ const trail = await box.audit();                           // every crossing, lo
 - `@zeroness/broker` — the trust-root Durable Object (the only component with secrets).
 - `@zeroness/agent` — `zeronessd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
 - `@zeroness/gatekeeper` — human-in-the-loop approval state machine + adapters (webhook, Cloudflare OS).
+- `@zeroness/tls` — opt-in per-session MITM certificate authority.
 - `@zeroness/policy` — author, **lint**, and **simulate** policies offline.
 - `create-zeroness` — `pnpm create zeroness my-app` scaffolds a governed sandbox.
 
@@ -150,10 +151,12 @@ command channel**, **capability handles**, the **Egress Worker**, the **Broker**
 addressed snapshots + audit), **human-in-the-loop approvals** (`@zeroness/gatekeeper`),
 and the **`zeronessd` agent** (verifies every signed command before running it).
 
-Remaining: TLS-MITM interception, the transparent in-sandbox capability proxy,
-the `create-zeroness` starter, and — the big one — **live validation against a
-Cloudflare Sandbox** (its outbound-intercept internals are undocumented, so
-wiring all egress through the Worker is still to be proven end-to-end).
+Remaining: the one open item is **live validation against a real Cloudflare
+Sandbox** (its outbound-intercept internals are undocumented, so routing all
+egress through the Worker must be proven end-to-end). A turnkey harness
+(`scripts/validate.mjs`) and runbook (`DEPLOY.md`) are ready for the moment you
+have a Workers-Paid account. TLS termination at the interception point is the
+only other partial (the CA machinery in `@zeroness/tls` is done and tested).
 
 ## A note on provenance
 
