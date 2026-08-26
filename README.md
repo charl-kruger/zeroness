@@ -155,6 +155,7 @@ Inside the sandbox, **`zeronessd`** verifies commands and proxies capability I/O
 - **[docs/concepts.md](./docs/concepts.md)**: the mental model.
 - **[docs/api-reference.md](./docs/api-reference.md)**: full API surface for every package.
 - **[docs/recipes.md](./docs/recipes.md)**: task-oriented examples.
+- **[docs/logging.md](./docs/logging.md)**: audit via Workers Logs (7-day) and Logpush.
 - **[DEPLOY.md](./DEPLOY.md)**: deploy the Workers + validate on live Cloudflare.
 - **[SECURITY.md](./SECURITY.md)**: threat model, assumptions, residual risks.
 

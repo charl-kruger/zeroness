@@ -14,3 +14,5 @@ export {
   generateSessionKey, signCommand, verifyCommand, exportPublicKeyRaw, importPublicKeyRaw, sha256Hex, randomNonce,
 } from "./signing";
 export type { Envelope, VerifyOpts } from "./signing";
+export { emitAuditLog, formatAuditLine, ZN_AUDIT } from "./audit-log";
+export type { AuditLogEvent, AuditLogLine } from "./audit-log";

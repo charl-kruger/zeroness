@@ -7,5 +7,8 @@
   // Bind the same ZeronessBroker DO the control plane uses.
   "durable_objects": {
     "bindings": [{ "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker", "script_name": "zeroness-broker" }]
-  }
+  },
+  // Capture this Worker's own logs too (audit is emitted by the Broker). See
+  // docs/logging.md for Workers Logs + Logpush.
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

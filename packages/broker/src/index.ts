@@ -8,7 +8,7 @@
  * the exact headers to inject, minted fresh per call.
  */
 
-import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken } from "@zeroness/core";
+import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog } from "@zeroness/core";
 import { ApprovalStore, emptyApprovalState, type ApprovalState, ManualGatekeeper, WebhookGatekeeper, type GatekeeperAdapter } from "@zeroness/gatekeeper";
 
 export interface Env {
@@ -34,6 +34,8 @@ interface AuditEntry { ts: number; event: string; detail: unknown }
 
 export class ZeronessBroker {
   private gatekeeper: GatekeeperAdapter;
+  /** Cached session id for audit-log attribution (avoids a storage read per append). */
+  private sessionId?: string;
   constructor(private state: DurableObjectState, private env: Env) {
     this.gatekeeper = env.GATEKEEPER_URL ? new WebhookGatekeeper(env.GATEKEEPER_URL) : new ManualGatekeeper();
   }
@@ -87,6 +89,7 @@ export class ZeronessBroker {
       handleTokens, pubKey: body.pubKey, lastSeq: 0,
     };
     await this.state.storage.put("session", s);
+    this.sessionId = s.sessionId;
     await this.append({ ts: Date.now(), event: "session:create", detail: { sessionId: s.sessionId } });
     return json({ handleTokens });
   }
@@ -271,6 +274,11 @@ export class ZeronessBroker {
   private async append(e: AuditEntry): Promise<void> {
     const log = (await this.state.storage.get<AuditEntry[]>("audit")) ?? [];
     log.push(e); await this.state.storage.put("audit", log.slice(-1000));
+    // Also emit a compact structured line so Cloudflare Workers Logs captures it
+    // (7-day retention, queryable) and Workers Trace Events Logpush can ship it to
+    // R2/S3/Splunk/etc. Filter with `zn = "audit"`. See docs/logging.md.
+    if (this.sessionId === undefined) this.sessionId = (await this.session())?.sessionId;
+    emitAuditLog({ event: e.event, ts: e.ts, sessionId: this.sessionId, detail: e.detail });
   }
   private secret(name: string): string | undefined { return this.env.SECRETS?.[name] ?? (this.env[name] as string | undefined); }
   private async mintOidc(audience: string, subject: string, ttl: number): Promise<string> {

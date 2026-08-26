@@ -93,6 +93,21 @@ isCap(uri): boolean
 mintOpaqueToken(): string                              // "zn_<48 hex>"
 ```
 
+### Audit logging
+
+Emit audit events onto Cloudflare's log pipeline (Workers Logs + Logpush). The
+Broker already emits these for every crossing; use the helper to add your own in
+the same shape. See [logging.md](./logging.md).
+
+```ts
+// one compact JSON line: {"zn":"audit","v":1,"ts":...,"event":...,"sid":...,"detail":...}
+emitAuditLog(event: AuditLogEvent, log?: (msg: string) => void): void
+formatAuditLine(event: AuditLogEvent): string          // the line, without emitting
+ZN_AUDIT: "audit"                                      // the marker; filter with zn = "audit"
+
+interface AuditLogEvent { event: string; ts?: number; sessionId?: string; detail?: unknown }
+```
+
 ### Governed sandbox (enforced network jail)
 
 The enforced network boundary over untrusted in-container code. Proven live

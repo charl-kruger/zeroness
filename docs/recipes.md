@@ -192,3 +192,20 @@ const trail = await box.audit();
 //  { ts, event: "egress:deny",  detail: { url, reason } },
 //  { ts, event: "cap:write",    detail: { name, key } }, … ]
 ```
+
+## Ship the audit trail to your own sink (Workers Logs + Logpush)
+
+The Broker also emits every audit event as a structured `console.log` line, so it
+rides Cloudflare's log pipeline with no extra code. Turn on observability for the
+Broker Worker:
+
+```jsonc
+// packages/broker/wrangler.jsonc (or your own Worker)
+{ "observability": { "enabled": true, "head_sampling_rate": 1 } }
+```
+
+Now the events land in Workers Logs (7-day retention, queryable). Filter on
+`zn = "audit"`, or `event = "egress:deny"`, or `sid = "user-1"`. To keep them
+longer or feed a SIEM, add `"logpush": true` and create a Workers Trace Events
+Logpush job to R2, S3, Splunk, Datadog, or an HTTPS endpoint. Full walkthrough:
+[logging.md](./logging.md).

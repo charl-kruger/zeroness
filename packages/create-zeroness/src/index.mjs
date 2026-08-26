@@ -24,8 +24,8 @@ const files = {
     name, version: "0.0.0", private: true, type: "module",
     scripts: { dev: "wrangler dev", deploy: "wrangler deploy" },
     dependencies: {
-      "@zeroness/core": "^0.2.0",
-      "@zeroness/broker": "^0.2.0",
+      "@zeroness/core": "^0.3.0",
+      "@zeroness/broker": "^0.3.0",
       "@cloudflare/sandbox": "^0.12.8",
       "@cloudflare/containers": "^0.3.5",
     },
@@ -48,7 +48,10 @@ const files = {
     ]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox", "ZeronessBroker"] }],
-  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "${name}-snapshots" }]
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "${name}-snapshots" }],
+  // Workers Logs captures every zeroness audit event (filter with zn = "audit").
+  // Set "logpush": true + a Workers Trace Events Logpush job to ship them off-platform.
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }
 `,
 
