@@ -15,7 +15,7 @@ end-to-end on a real Cloudflare account.
 ```bash
 pnpm install
 pnpm build
-pnpm -r test        # 36 tests should pass locally before you deploy
+pnpm -r test        # 44 tests should pass locally before you deploy
 ```
 
 ## 2. Create the R2 bucket (snapshots + R2 capabilities)

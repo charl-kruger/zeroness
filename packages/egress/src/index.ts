@@ -35,15 +35,38 @@ export default {
     if (!token) return deny("missing session token", 407);
     const broker = env.ZERONESS_BROKER.get(env.ZERONESS_BROKER.idFromName(`token:${token}`));
 
+    const pathname = new URL(req.url).pathname;
+
+    // ---- agent heartbeat: record liveness in the Broker's audit log ----
+    if (req.method === "POST" && pathname === "/__zeroness/heartbeat") {
+      const detail = await req.json().catch(() => ({}));
+      await broker.fetch("https://zeroness.broker/audit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event: "heartbeat", detail }),
+      });
+      return new Response(null, { status: 204 });
+    }
+
+    // ---- snapshot upload: forward the FS tarball to the Broker (content-addressed) ----
+    if (req.method === "POST" && pathname === "/__zeroness/snapshot/upload") {
+      const res = await broker.fetch("https://zeroness.broker/snapshot/upload", {
+        method: "POST",
+        headers: { "x-zeroness-token": token },
+        body: req.body,
+      });
+      return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
+    }
+
     // ---- capability op: forward to the Broker's cap resolver ----
     const cap = capName(req);
     if (cap) {
-      const body = req.method === "POST" ? await req.text() : JSON.stringify(queryToCapArgs(req));
-      // The Broker checks the session token owns this capability before touching any binding.
-      const res = await broker.fetch(`https://zeroness.broker/cap/${encodeURIComponent(cap)}`, {
+      // The Broker re-checks the session token owns this capability before touching any binding.
+      const search = req.method === "GET" ? new URL(req.url).search : "";
+      const res = await broker.fetch(`https://zeroness.broker/cap/${encodeURIComponent(cap)}${search}`, {
         method: req.method === "POST" ? "POST" : "GET",
         headers: { "content-type": "application/json", "x-zeroness-token": token },
-        body: req.method === "POST" ? body : undefined,
+        body: req.method === "POST" ? await req.text() : undefined,
       });
       return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
     }
@@ -81,10 +104,3 @@ export default {
   },
 };
 
-/** GET cap args come from the query string: ?path=…&query=… */
-function queryToCapArgs(req: Request): Record<string, string> {
-  const q = new URL(req.url).searchParams;
-  const args: Record<string, string> = {};
-  for (const k of ["path", "query"]) { const v = q.get(k); if (v !== null) args[k] = v; }
-  return args;
-}

@@ -59,7 +59,15 @@ export class ZeronessBroker {
         // Defense-in-depth: if the caller presents a token (egress path), it must own this session.
         const tok = req.headers.get("x-zeroness-token");
         if (tok) { const s = await this.session(); if (!s || s.sessionToken !== tok) return json({ error: "token mismatch" }, 403); }
-        return await this.capIO(req.method, decodeURIComponent(path.slice(5)), req.method === "POST" ? await req.json() : {});
+        let args: { path?: string; data?: string | number[]; query?: string; params?: unknown[] };
+        if (req.method === "POST") {
+          args = (await req.json()) as typeof args;
+        } else {
+          const q: Record<string, string> = {};
+          new URL(req.url).searchParams.forEach((v, k) => { q[k] = v; });
+          args = q;
+        }
+        return await this.capIO(req.method, decodeURIComponent(path.slice(5)), args);
       }
       return new Response("not found", { status: 404 });
     } catch (e) {
@@ -238,6 +246,8 @@ export class ZeronessBroker {
   }
   private async snapshotUpload(req: Request): Promise<Response> {
     if (!this.env.SNAPSHOTS) return json({ error: "no snapshot bucket" }, 501);
+    const tok = req.headers.get("x-zeroness-token");
+    if (tok) { const s = await this.session(); if (!s || s.sessionToken !== tok) return json({ error: "token mismatch" }, 403); }
     const bytes = new Uint8Array(await req.arrayBuffer());
     const ref = `snap_${await sha256Hex(bytes)}`;
     await this.env.SNAPSHOTS.put(`snapshots/${ref}`, bytes);

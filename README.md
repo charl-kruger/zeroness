@@ -145,7 +145,7 @@ See [`SECURITY.md`](./SECURITY.md) for the threat model, assumptions, and residu
 
 ## Status
 
-Implemented and unit-tested (26 tests): the **policy engine**, **Ed25519 signed
+Implemented and unit-tested (44 tests, incl. an in-process Broker integration suite): the **policy engine**, **Ed25519 signed
 command channel**, **capability handles**, the **Egress Worker**, the **Broker**
 (policy eval + per-request identity minting + R2/D1/KV capabilities + content-
 addressed snapshots + audit), **human-in-the-loop approvals** (`@zeroness/gatekeeper`),

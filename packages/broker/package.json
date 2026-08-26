@@ -9,8 +9,13 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy": "wrangler deploy",
-    "test": "echo 'no tests yet'"
+    "test": "vitest run"
   },
-  "dependencies": { "@zeroness/core": "workspace:*", "@zeroness/gatekeeper": "workspace:*" },
-  "devDependencies": { "wrangler": "^3.80.0" }
+  "dependencies": {
+    "@zeroness/core": "workspace:*",
+    "@zeroness/gatekeeper": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
 }

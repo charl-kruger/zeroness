@@ -164,7 +164,7 @@ export class ZeronessSandbox {
 
   async runCode(ctxOrCode: unknown, codeOrOpts?: unknown) {
     const body = typeof ctxOrCode === "string" ? ctxOrCode : JSON.stringify(codeOrOpts ?? "");
-    await this.dispatch("runCode", { body }); // signed + audited; execution stays on the SDK's code runtime
+    await this.dispatch("runCode", { body }, false); // signed + audited only; the SDK's code runtime executes it
     const r = await this.cf.runCode(ctxOrCode, codeOrOpts);
     await this.audit("runCode", { bytes: body.length });
     return r;
@@ -188,13 +188,16 @@ export class ZeronessSandbox {
     return this.cf.readFile(path, opts);
   }
 
-  /** Checkpoint FS state to R2 (content-addressed). The agent tars the FS and uploads it; returns a snapshot ref. */
+  /**
+   * Checkpoint FS state to R2 (content-addressed). Requires the agent: zeronessd
+   * tars the writable FS and uploads it via the Egress Worker. Returns a ref.
+   */
   async snapshot(): Promise<string> {
+    if (!this.config.agentUrl) throw new Error("snapshot() requires the zeronessd agent — set `agentUrl` in the sandbox config");
     const viaAgent = await this.dispatch("snapshot", {});
-    if (viaAgent?.ref) { await this.audit("snapshot", { ref: viaAgent.ref, agent: true }); return viaAgent.ref; }
-    const { ref } = (await this.broker("POST", "/snapshot", { sessionId: this.sessionId })) as { ref: string };
-    await this.audit("snapshot", { ref });
-    return ref;
+    if (!viaAgent?.ref) throw new Error("agent snapshot failed");
+    await this.audit("snapshot", { ref: viaAgent.ref, agent: true });
+    return viaAgent.ref;
   }
 
   /** Full audit trail: every egress verdict + resource op + command. */
@@ -215,7 +218,7 @@ export class ZeronessSandbox {
    * before executing) and return the agent's result. Returns null when no agent
    * is wired, so callers fall back to the raw SDK.
    */
-  private async dispatch(procedure: Envelope["procedure"], args: unknown): Promise<any | null> {
+  private async dispatch(procedure: Envelope["procedure"], args: unknown, viaAgent = true): Promise<any | null> {
     const body = JSON.stringify(args ?? {});
     const { envelope, signature } = await signCommand(
       this.signKey,
@@ -223,7 +226,7 @@ export class ZeronessSandbox {
       body,
     );
     await this.broker("POST", "/command", { envelope, signature });
-    if (!this.config.agentUrl) return null;
+    if (!viaAgent || !this.config.agentUrl) return null;
     const res = await fetch(`${this.config.agentUrl.replace(/\/$/, "")}/command`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -234,7 +237,11 @@ export class ZeronessSandbox {
   }
 
   private async capIO(method: "GET" | "PUT", cap: ReturnType<typeof parseCap>, data?: string | Uint8Array) {
-    return this.broker(method === "PUT" ? "POST" : "GET", `/cap/${cap!.name}`, {
+    if (method === "GET") {
+      // reads pass the path in the query string (GET carries no body)
+      return this.broker("GET", `/cap/${cap!.name}?path=${encodeURIComponent(cap!.path)}`, undefined);
+    }
+    return this.broker("POST", `/cap/${cap!.name}`, {
       path: cap!.path,
       data: data instanceof Uint8Array ? [...data] : data,
     });

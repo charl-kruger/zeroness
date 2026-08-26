@@ -59,13 +59,17 @@ export const defaultRunners = {
     return { content: readFileSync(path, "utf8") };
   },
   async snapshot(_args, ctx) {
-    // tar the writable rootfs and upload to the Broker (content-addressed to R2).
+    // tar the writable rootfs and upload via the Egress Worker (content-addressed to R2).
+    if (!ctx.egressUrl) throw new Error("snapshot requires ZERONESS_EGRESS_URL");
     const tar = spawn("tar", ["czf", "-", "-C", "/", "--exclude=./proc", "--exclude=./sys", "."]);
     const chunks = [];
     tar.stdout.on("data", (d) => chunks.push(d));
     await new Promise((r) => tar.on("close", r));
-    const body = Buffer.concat(chunks);
-    const res = await fetch(`${ctx.brokerUrl}/snapshot/upload`, { method: "POST", body });
+    const res = await fetch(`${ctx.egressUrl}/__zeroness/snapshot/upload`, {
+      method: "POST",
+      headers: { "x-zeroness-session-token": ctx.sessionToken ?? "" },
+      body: Buffer.concat(chunks),
+    });
     return res.json();
   },
 };
@@ -88,7 +92,8 @@ async function main() {
   const port = Number(process.env.ZERONESS_AGENT_PORT ?? 9787);
   const ctx = {
     pub: await importPub(process.env.ZERONESS_PUBKEY),
-    brokerUrl: process.env.ZERONESS_BROKER_URL,
+    egressUrl: process.env.ZERONESS_EGRESS_URL,
+    sessionToken: process.env.ZERONESS_SESSION,
     runners: defaultRunners,
     seq: { last: 0 },
   };
@@ -129,13 +134,13 @@ async function main() {
   });
   server.listen(port, "127.0.0.1", () => console.error(`zeronessd listening on 127.0.0.1:${port}`));
 
-  // heartbeat / attestation
-  if (ctx.brokerUrl) {
+  // heartbeat / attestation — routed through the Egress Worker to the Broker
+  if (ctx.egressUrl) {
     setInterval(() => {
-      fetch(`${ctx.brokerUrl}/audit`, {
+      fetch(`${ctx.egressUrl}/__zeroness/heartbeat`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ event: "heartbeat", detail: { seq: ctx.seq.last, pid: process.pid } }),
+        headers: { "content-type": "application/json", "x-zeroness-session-token": ctx.sessionToken ?? "" },
+        body: JSON.stringify({ seq: ctx.seq.last, pid: process.pid }),
       }).catch(() => {});
     }, 15_000);
   }
