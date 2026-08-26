@@ -1,18 +1,17 @@
 {
-  "name": "zeroness-example",
+  "name": "zeroness-sandbox-example",
   "main": "src/index.ts",
-  "compatibility_date": "2025-08-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "vars": { "EGRESS_URL": "https://zeroness-egress.example.workers.dev" },
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat", "enable_ctx_exports"],
+  "containers": [
+    { "class_name": "Sandbox", "image": "./Dockerfile", "max_instances": 1, "instance_type": "standard" }
+  ],
   "durable_objects": {
     "bindings": [
-      // The Cloudflare Sandbox binding (from @cloudflare/sandbox setup).
       { "name": "Sandbox", "class_name": "Sandbox" },
-      // The zeroness Broker DO — hosted by this Worker in the demo.
-      { "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker" }
+      { "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker", "script_name": "zeroness-broker" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ZeronessBroker"] }],
-  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "zeroness-snapshots" }]
-  // `wrangler secret put STRIPE_RO` — the Broker injects it at egress-time.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sandbox"] }],
+  "vars": { "EGRESS_URL": "https://zeroness-egress.invsy.workers.dev" }
 }
