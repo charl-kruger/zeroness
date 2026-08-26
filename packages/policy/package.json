@@ -6,10 +6,17 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": { "@zeroness/core": "workspace:*" }
+  "dependencies": {
+    "@zeroness/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

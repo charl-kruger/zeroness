@@ -4,12 +4,29 @@
   "description": "zeroness Egress Worker — default-deny outbound proxy that enforces Broker decisions and injects brokered identity.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy": "wrangler deploy",
     "test": "vitest run"
   },
-  "devDependencies": { "wrangler": "^3.80.0" }
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "wrangler.jsonc"
+  ]
 }

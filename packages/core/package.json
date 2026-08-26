@@ -22,5 +22,8 @@
   },
   "optionalDependencies": {
     "@zeroness/tls": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
