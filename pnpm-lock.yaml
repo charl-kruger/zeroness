@@ -51,6 +51,8 @@ importers:
 
   packages/core: {}
 
+  packages/create-zeroness: {}
+
   packages/egress:
     devDependencies:
       wrangler:

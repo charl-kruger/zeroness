@@ -9,10 +9,12 @@
  *      apply rewrite/forwardURL, forward upstream, stream the response back,
  *   4. every crossing is audited by the Broker.
  *
- * The Egress Worker holds NO secrets: the Broker mints and returns the exact
- * headers to inject, per request. A compromised egress node cannot leak
- * long-lived credentials.
+ * It also exposes a capability endpoint (`/__zeroness/cap/<name>`) so in-sandbox
+ * code can read/write R2/D1/KV by opaque handle. The Egress Worker holds NO
+ * secrets: the Broker mints identity and resolves capabilities, per request.
  */
+
+import { sessionToken, intendedTarget, capName, deny } from "./lib";
 
 export interface Env {
   ZERONESS_BROKER: DurableObjectNamespace;
@@ -21,24 +23,35 @@ export interface Env {
 interface AuthorizeResult {
   verdict: "allow" | "deny" | "ask";
   reason: string;
-  target: string;                    // final upstream URL (after forwardURL/rewrite)
-  injectHeaders?: Record<string, string>; // brokered identity, minted per-request
+  target: string;
+  injectHeaders?: Record<string, string>;
   dropHeaders?: string[];
-  approvalId?: string;               // present when verdict === "ask"
+  approvalId?: string;
 }
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    // ---- 1. identify the session ----
     const token = sessionToken(req);
     if (!token) return deny("missing session token", 407);
+    const broker = env.ZERONESS_BROKER.get(env.ZERONESS_BROKER.idFromName(`token:${token}`));
 
-    // ---- 2. determine the intended target ----
+    // ---- capability op: forward to the Broker's cap resolver ----
+    const cap = capName(req);
+    if (cap) {
+      const body = req.method === "POST" ? await req.text() : JSON.stringify(queryToCapArgs(req));
+      // The Broker checks the session token owns this capability before touching any binding.
+      const res = await broker.fetch(`https://zeroness.broker/cap/${encodeURIComponent(cap)}`, {
+        method: req.method === "POST" ? "POST" : "GET",
+        headers: { "content-type": "application/json", "x-zeroness-token": token },
+        body: req.method === "POST" ? body : undefined,
+      });
+      return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
+    }
+
+    // ---- egress op ----
     const target = intendedTarget(req);
     if (!target) return deny("no target", 400);
 
-    // ---- 3. ask the Broker for a decision (it evaluates policy + mints identity) ----
-    const broker = env.ZERONESS_BROKER.get(env.ZERONESS_BROKER.idFromName(`token:${token}`));
     const authRes = await broker.fetch("https://zeroness.broker/authorize", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -47,70 +60,31 @@ export default {
     if (authRes.status === 401) return deny("unknown or revoked session", 403);
     const decision = (await authRes.json()) as AuthorizeResult;
 
-    // ---- 4. enforce ----
     if (decision.verdict === "deny") return deny(decision.reason, 403);
 
     if (decision.verdict === "ask") {
-      // Phase 4: human-in-the-loop via Gatekeeper. Until approved, block the call.
       return new Response(
         JSON.stringify({ error: "approval_required", approvalId: decision.approvalId, reason: decision.reason }),
         { status: 451, headers: { "content-type": "application/json", "x-zeroness-approval": decision.approvalId ?? "" } },
       );
     }
 
-    // allow → build the upstream request with brokered identity + rewrites
-    const upstreamUrl = decision.target;
     const headers = new Headers(req.headers);
-    headers.delete("proxy-authorization");
-    headers.delete("x-zeroness-session-token");
-    headers.delete("x-zeroness-target");
+    for (const h of ["proxy-authorization", "x-zeroness-session-token", "x-zeroness-target"]) headers.delete(h);
     for (const h of decision.dropHeaders ?? []) headers.delete(h);
     for (const [k, v] of Object.entries(decision.injectHeaders ?? {})) headers.set(k, v);
 
-    const upstream = new Request(upstreamUrl, {
-      method: req.method,
-      headers,
-      body: req.body,
-      redirect: "manual", // never auto-follow a redirect out of policy scope
-    });
-
-    const res = await fetch(upstream);
-    // strip hop-by-hop; pass the rest through
+    const res = await fetch(new Request(decision.target, { method: req.method, headers, body: req.body, redirect: "manual" }));
     const outHeaders = new Headers(res.headers);
     outHeaders.set("x-zeroness", "allowed");
     return new Response(res.body, { status: res.status, headers: outHeaders });
   },
 };
 
-/** Token from Proxy-Authorization basic (password), Authorization basic, or a header. */
-function sessionToken(req: Request): string | null {
-  const h = req.headers.get("x-zeroness-session-token");
-  if (h) return h;
-  const proxyAuth = req.headers.get("proxy-authorization") ?? req.headers.get("authorization");
-  if (proxyAuth?.toLowerCase().startsWith("basic ")) {
-    try {
-      const [, pass] = atob(proxyAuth.slice(6)).split(":");
-      if (pass) return pass;
-    } catch { /* ignore */ }
-  }
-  return null;
-}
-
-/** Absolute proxy URL, or the original target carried by the intercept header. */
-function intendedTarget(req: Request): URL | null {
-  const explicit = req.headers.get("x-zeroness-target");
-  if (explicit) { try { return new URL(explicit); } catch { return null; } }
-  try {
-    const u = new URL(req.url);
-    // In forward-proxy mode the request line carries the absolute target.
-    if (u.hostname && !u.hostname.endsWith(".workers.dev")) return u;
-  } catch { /* ignore */ }
-  return null;
-}
-
-function deny(reason: string, status: number): Response {
-  return new Response(JSON.stringify({ error: "blocked_by_zeroness", reason }), {
-    status,
-    headers: { "content-type": "application/json", "x-zeroness": "denied" },
-  });
+/** GET cap args come from the query string: ?path=…&query=… */
+function queryToCapArgs(req: Request): Record<string, string> {
+  const q = new URL(req.url).searchParams;
+  const args: Record<string, string> = {};
+  for (const k of ["path", "query"]) { const v = q.get(k); if (v !== null) args[k] = v; }
+  return args;
 }

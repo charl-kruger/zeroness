@@ -95,6 +95,7 @@ const trail = await box.audit();                           // every crossing, lo
 - `@zeroness/agent` — `zeronessd`, the in-sandbox agent (verify signed commands, cap I/O, heartbeat).
 - `@zeroness/gatekeeper` — human-in-the-loop approval state machine + adapters (webhook, Cloudflare OS).
 - `@zeroness/policy` — author, **lint**, and **simulate** policies offline.
+- `create-zeroness` — `pnpm create zeroness my-app` scaffolds a governed sandbox.
 
 ## Quickstart
 
@@ -107,6 +108,10 @@ pnpm -C packages/core test          # the policy engine is unit-tested
 pnpm -C packages/broker deploy
 pnpm -C packages/egress deploy
 pnpm -C examples/governed-sandbox deploy
+
+# scaffold your own, or validate a live deployment end-to-end
+pnpm create zeroness my-app
+node scripts/validate.mjs https://your-example.workers.dev
 ```
 
 Author policy with confidence — it's just data:
@@ -135,6 +140,7 @@ console.log(formatSimulation(simulate(myPolicy, [
 
 See [`PLAN.md`](./PLAN.md) for the full design, roadmap, and the mapping from each
 design pattern to its Cloudflare-native mechanism.
+See [`SECURITY.md`](./SECURITY.md) for the threat model, assumptions, and residual risks.
 
 ## Status
 

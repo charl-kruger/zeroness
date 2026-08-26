@@ -97,6 +97,7 @@ export class Zeroness {
       // the agent (zeronessd) reads these at boot to verify signed commands + resolve caps
       ZERONESS_SESSION: sessionToken,
       ZERONESS_PUBKEY: pubKey,
+      ZERONESS_EGRESS_URL: this.opts.egressUrl.replace(/\/$/, ""),
       ZERONESS_CAPS: Object.entries(reg.handleTokens).map(([n, t]) => `${n}=${t}`).join(","),
     };
     if (cf.setEnvVars) await cf.setEnvVars(env);

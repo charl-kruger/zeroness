@@ -55,7 +55,10 @@ export class ZeronessBroker {
       if (req.method === "GET" && sn) return await this.snapshotGet(sn[1]!);
       if (req.method === "POST" && path === "/snapshot") return await this.snapshotInstruct();
       if ((req.method === "POST" || req.method === "GET") && path.startsWith("/cap/")) {
-        return await this.capIO(req.method, path.slice(5), req.method === "POST" ? await req.json() : {});
+        // Defense-in-depth: if the caller presents a token (egress path), it must own this session.
+        const tok = req.headers.get("x-zeroness-token");
+        if (tok) { const s = await this.session(); if (!s || s.sessionToken !== tok) return json({ error: "token mismatch" }, 403); }
+        return await this.capIO(req.method, decodeURIComponent(path.slice(5)), req.method === "POST" ? await req.json() : {});
       }
       return new Response("not found", { status: 404 });
     } catch (e) {

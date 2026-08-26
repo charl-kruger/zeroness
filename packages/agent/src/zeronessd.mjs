@@ -109,6 +109,22 @@ async function main() {
       res.end(JSON.stringify({ ok: true, seq: ctx.seq.last }));
       return;
     }
+    // transparent capability proxy: in-sandbox code hits 127.0.0.1:PORT/cap/<name>,
+    // we forward to the Egress Worker with the session token — code never holds secrets.
+    if (req.url?.startsWith("/cap/") && process.env.ZERONESS_EGRESS_URL) {
+      let buf = "";
+      req.on("data", (d) => (buf += d));
+      req.on("end", async () => {
+        const r = await fetch(`${process.env.ZERONESS_EGRESS_URL}/__zeroness${req.url}`, {
+          method: req.method,
+          headers: { "content-type": "application/json", "x-zeroness-session-token": process.env.ZERONESS_SESSION ?? "" },
+          body: req.method === "POST" ? buf : undefined,
+        });
+        res.writeHead(r.status, { "content-type": "application/json" });
+        res.end(await r.text());
+      });
+      return;
+    }
     res.writeHead(404); res.end();
   });
   server.listen(port, "127.0.0.1", () => console.error(`zeronessd listening on 127.0.0.1:${port}`));

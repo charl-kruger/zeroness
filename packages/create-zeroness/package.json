@@ -1,0 +1,9 @@
+{
+  "name": "create-zeroness",
+  "version": "0.1.0",
+  "description": "Scaffold a governed Cloudflare Sandbox powered by zeroness.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "create-zeroness": "src/index.mjs" },
+  "files": ["src"]
+}
