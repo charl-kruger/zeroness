@@ -153,6 +153,7 @@ Inside the sandbox, **`zeronessd`** verifies commands and proxies capability I/O
 
 - **[AGENTS.md](./AGENTS.md)**: deep, imperative guide for an AI agent using zeroness (and working in this repo).
 - **[docs/concepts.md](./docs/concepts.md)**: the mental model.
+- **[docs/use-cases.md](./docs/use-cases.md)**: what to build, and how it fits Cloudflare OS.
 - **[docs/api-reference.md](./docs/api-reference.md)**: full API surface for every package.
 - **[docs/recipes.md](./docs/recipes.md)**: task-oriented examples.
 - **[docs/logging.md](./docs/logging.md)**: audit via Workers Logs (7-day) and Logpush.
