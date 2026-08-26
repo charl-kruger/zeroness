@@ -11,7 +11,7 @@
   "dependencies": {
     "@zeroness/core": "workspace:*",
     "@zeroness/broker": "workspace:*",
-    "@cloudflare/sandbox": "^0.1.0"
+    "@cloudflare/sandbox": "^0.12.8"
   },
   "devDependencies": {
     "wrangler": "^3.80.0"

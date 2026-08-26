@@ -1,0 +1,11 @@
+{
+  "name": "zeroness-livetest",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ZERONESS_BROKER", "class_name": "ZeronessBroker", "script_name": "zeroness-broker" }
+    ]
+  }
+}
