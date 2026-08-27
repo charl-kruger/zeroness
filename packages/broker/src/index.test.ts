@@ -13,12 +13,41 @@ class MemR2 {
   async put(k: string, v: string | Uint8Array) { this.m.set(k, typeof v === "string" ? v : Buffer.from(v).toString("binary")); }
   async get(k: string) { const v = this.m.get(k); return v === undefined ? null : { async text() { return v; }, body: v }; }
 }
+class MemKV {
+  m = new Map<string, string>();
+  async put(k: string, v: string | Uint8Array) { this.m.set(k, typeof v === "string" ? v : Buffer.from(v).toString("binary")); }
+  async get(k: string) { return this.m.get(k) ?? null; }
+}
+class MemD1 {
+  rows: Array<Record<string, unknown>> = [];
+  writes: string[] = [];           // every statement that actually executed a write
+  prepare(sql: string) {
+    const self = this;
+    const stmt = {
+      bind(..._params: unknown[]) { return stmt; },
+      async run() { self.writes.push(sql); return { success: true, meta: {} }; },
+      async all() {
+        // A real D1 .all() executes writes too — model that, so ro-enforcement can be tested.
+        if (/^\s*(insert|update|delete|drop|create|alter|replace)\b/i.test(sql)) self.writes.push(sql);
+        return { results: self.rows };
+      },
+    };
+    return stmt;
+  }
+}
 
 const TOK = "zn_session_token";
 function makeBroker() {
   const state = { storage: new MemStorage() } as unknown as DurableObjectState;
-  const env = { SNAPSHOTS: new MemR2() as unknown as R2Bucket, SECRETS: { STRIPE_RO: "sk_test_abc" } };
-  return new ZeronessBroker(state, env);
+  const d1 = new MemD1();
+  const kv = new MemKV();
+  const env = {
+    SNAPSHOTS: new MemR2() as unknown as R2Bucket,
+    SECRETS: { STRIPE_RO: "sk_test_abc" },
+    analytics: d1 as unknown as D1Database,
+    cache: kv as unknown as KVNamespace,
+  };
+  return { broker: new ZeronessBroker(state, env), d1, kv };
 }
 const req = (path: string, init: RequestInit = {}) => new Request(`https://zeroness.broker${path}`, init);
 const j = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
@@ -26,8 +55,10 @@ const j = (path: string, method: string, body?: unknown, headers: Record<string,
 
 describe("broker integration", () => {
   let b: ZeronessBroker;
+  let d1: MemD1;
+  let kv: MemKV;
   beforeEach(async () => {
-    b = makeBroker();
+    ({ broker: b, d1, kv } = makeBroker());
     const res = await b.fetch(j("/session", "POST", {
       sessionId: "sid1", sessionToken: TOK, pubKey: "x",
       policy: {
@@ -37,7 +68,13 @@ describe("broker integration", () => {
           { host: "api.stripe.com", verdict: "ask", identity: "cap:stripe" },
         ],
       },
-      resources: { stripe: { accessToken: "STRIPE_RO" }, reports: { r2: "reports", mode: "rw", prefix: "u/" } },
+      resources: {
+        stripe: { accessToken: "STRIPE_RO" },
+        reports: { r2: "reports", mode: "rw", prefix: "u/" },
+        analyticsRo: { d1: "analytics", mode: "ro" },
+        cacheRw: { kv: "cache", mode: "rw" },
+        cacheRo: { kv: "cache", mode: "ro" },
+      },
     }));
     expect(res.status).toBe(200);
   });
@@ -103,5 +140,38 @@ describe("broker integration", () => {
     const events = audit.map((a: { event: string }) => a.event);
     expect(events).toContain("egress:allow");
     expect(events).toContain("egress:deny");
+  });
+
+  it("injects a brokered accessToken identity on an allowed request", async () => {
+    // add a direct allow-with-identity to a fresh session
+    const b2 = makeBroker().broker;
+    await b2.fetch(j("/session", "POST", {
+      sessionId: "sid2", sessionToken: TOK, pubKey: "x",
+      policy: { default: "deny", allow: [{ host: "api.stripe.com", identity: "cap:stripe" }] },
+      resources: { stripe: { accessToken: "STRIPE_RO" } },
+    }));
+    const d = await (await b2.fetch(j("/authorize", "POST", { token: TOK, url: "https://api.stripe.com/v1/x", method: "GET" }))).json();
+    expect(d.verdict).toBe("allow");
+    expect(d.injectHeaders.authorization).toBe("Bearer sk_test_abc");
+  });
+
+  it("writes then reads a KV capability by handle", async () => {
+    const w = await b.fetch(j("/cap/cacheRw", "POST", { path: "k1", data: "v1" }, { "x-zeroness-token": TOK }));
+    expect(w.status).toBe(200);
+    const r = await b.fetch(req("/cap/cacheRw?path=k1", { method: "GET", headers: { "x-zeroness-token": TOK } }));
+    expect((await r.json()).content).toBe("v1");
+  });
+
+  it("blocks a write to a read-only KV capability", async () => {
+    const w = await b.fetch(j("/cap/cacheRo", "POST", { path: "k1", data: "v1" }, { "x-zeroness-token": TOK }));
+    expect(w.status).toBe(403);
+  });
+
+  it("reads through a D1 capability", async () => {
+    d1.rows = [{ id: 1, name: "a" }];
+    const r = await b.fetch(req("/cap/analyticsRo?query=" + encodeURIComponent("SELECT * FROM t"), {
+      method: "GET", headers: { "x-zeroness-token": TOK },
+    }));
+    expect((await r.json()).results).toEqual([{ id: 1, name: "a" }]);
   });
 });
