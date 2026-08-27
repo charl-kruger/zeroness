@@ -208,7 +208,17 @@ export class ZeronessBroker {
     if ("d1" in binding) {
       const db = this.env[binding.d1] as D1Database | undefined;
       if (!db) return json({ error: `D1 binding '${binding.d1}' not found` }, 501);
-      if (method === "POST" && binding.mode !== "ro" && body.query) {
+      const readOnly = binding.mode === "ro";
+      if (readOnly) {
+        if (body.query && !isReadOnlySql(body.query)) {
+          await this.append({ ts: Date.now(), event: "cap:d1:blocked", detail: { name } });
+          return json({ error: "read-only capability: only read statements are allowed" }, 403);
+        }
+        const r = await db.prepare(body.query ?? "SELECT 1").bind(...(body.params ?? [])).all();
+        await this.append({ ts: Date.now(), event: "cap:d1:read", detail: { name } });
+        return json({ results: r.results });
+      }
+      if (method === "POST" && body.query) {
         const r = await db.prepare(body.query).bind(...(body.params ?? [])).run();
         await this.append({ ts: Date.now(), event: "cap:d1:write", detail: { name } });
         return json({ success: r.success, meta: r.meta });
@@ -310,6 +320,17 @@ function reorigin(base: string, orig: URL, pathOverride?: string): string {
 function applyPath(orig: URL, pathOverride?: string): string {
   if (!pathOverride) return orig.toString();
   const u = new URL(orig.toString()); u.pathname = pathOverride; return u.toString();
+}
+/** Conservative read-only check for a D1 statement on a mode:"ro" capability. */
+function isReadOnlySql(sql: string): boolean {
+  const s = sql.trim().replace(/;+\s*$/, ""); // allow a single trailing semicolon
+  if (s.includes(";")) return false;           // no multi-statement smuggling
+  if (!/^(select|with|explain)\b/i.test(s)) return false; // must be read-shaped (PRAGMA dropped — it can mutate)
+  // Belt-and-suspenders: reject any data-mutating keyword anywhere in the statement.
+  // Covers WITH-CTE-feeding-a-write (SQLite allows it) and EXPLAIN <write>. Word-boundaried
+  // so identifiers like "order_updates" / "created_at" do NOT false-positive.
+  if (/\b(insert|update|delete|replace|drop|alter|create|attach|detach|reindex|vacuum|pragma)\b/i.test(s)) return false;
+  return true;
 }
 function json(v: unknown, status = 200): Response {
   return new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });

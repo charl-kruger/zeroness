@@ -72,6 +72,7 @@ describe("broker integration", () => {
         stripe: { accessToken: "STRIPE_RO" },
         reports: { r2: "reports", mode: "rw", prefix: "u/" },
         analyticsRo: { d1: "analytics", mode: "ro" },
+        analyticsRw: { d1: "analytics", mode: "rw" },
         cacheRw: { kv: "cache", mode: "rw" },
         cacheRo: { kv: "cache", mode: "ro" },
       },
@@ -173,5 +174,50 @@ describe("broker integration", () => {
       method: "GET", headers: { "x-zeroness-token": TOK },
     }));
     expect((await r.json()).results).toEqual([{ id: 1, name: "a" }]);
+  });
+
+  it("blocks a write through a read-only D1 capability (POST)", async () => {
+    const res = await b.fetch(j("/cap/analyticsRo", "POST", { query: "DELETE FROM users" }, { "x-zeroness-token": TOK }));
+    expect(res.status).toBe(403);
+    expect(d1.writes).toEqual([]); // the write never executed
+  });
+
+  it("blocks a write through a read-only D1 capability (GET)", async () => {
+    const res = await b.fetch(req("/cap/analyticsRo?query=" + encodeURIComponent("DELETE FROM users"), {
+      method: "GET", headers: { "x-zeroness-token": TOK },
+    }));
+    expect(res.status).toBe(403);
+    expect(d1.writes).toEqual([]);
+  });
+
+  it("blocks multi-statement smuggling on a read-only D1 capability", async () => {
+    const res = await b.fetch(j("/cap/analyticsRo", "POST", { query: "SELECT 1; DROP TABLE users" }, { "x-zeroness-token": TOK }));
+    expect(res.status).toBe(403);
+    expect(d1.writes).toEqual([]);
+  });
+
+  it("allows a write through a read-write D1 capability", async () => {
+    const res = await b.fetch(j("/cap/analyticsRw", "POST", { query: "INSERT INTO t VALUES (1)" }, { "x-zeroness-token": TOK }));
+    expect((await res.json()).success).toBe(true);
+    expect(d1.writes).toContain("INSERT INTO t VALUES (1)");
+  });
+
+  it("blocks a CTE that feeds a write on a read-only D1 capability", async () => {
+    const res = await b.fetch(j("/cap/analyticsRo", "POST", { query: "WITH x AS (SELECT 1) DELETE FROM users" }, { "x-zeroness-token": TOK }));
+    expect(res.status).toBe(403);
+    expect(d1.writes).toEqual([]);
+  });
+
+  it("blocks a mutating PRAGMA on a read-only D1 capability", async () => {
+    const res = await b.fetch(j("/cap/analyticsRo", "POST", { query: "PRAGMA user_version = 5" }, { "x-zeroness-token": TOK }));
+    expect(res.status).toBe(403);
+    expect(d1.writes).toEqual([]);
+  });
+
+  it("still allows a read-only CTE on a read-only D1 capability", async () => {
+    d1.rows = [{ n: 1 }];
+    const res = await b.fetch(req("/cap/analyticsRo?query=" + encodeURIComponent("WITH x AS (SELECT 1) SELECT * FROM x"), { method: "GET", headers: { "x-zeroness-token": TOK } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).results).toEqual([{ n: 1 }]);
   });
 });
