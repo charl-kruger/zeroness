@@ -53,4 +53,13 @@ describe("zeronessd command handler", () => {
     const out = await handleCommand(ctx(kp.publicKey), msg);
     expect(out.status).toBe(400);
   });
+
+  it("dispatches a validly-signed restore command", async () => {
+    const kp = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const c = { pub: kp.publicKey, seq: { last: 0 }, runners: { restore: async ({ ref }) => ({ restored: ref }) } };
+    const msg = await signed(kp.privateKey, "restore", { ref: "snap_abc" });
+    const out = await handleCommand(c, msg);
+    expect(out.status).toBe(200);
+    expect(out.body.restored).toBe("snap_abc");
+  });
 });
