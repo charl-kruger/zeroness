@@ -41,13 +41,15 @@ function makeBroker() {
   const state = { storage: new MemStorage() } as unknown as DurableObjectState;
   const d1 = new MemD1();
   const kv = new MemKV();
+  const reports = new MemR2();
   const env = {
     SNAPSHOTS: new MemR2() as unknown as R2Bucket,
     SECRETS: { STRIPE_RO: "sk_test_abc" },
     analytics: d1 as unknown as D1Database,
     cache: kv as unknown as KVNamespace,
+    reports: reports as unknown as R2Bucket,
   };
-  return { broker: new ZeronessBroker(state, env), d1, kv };
+  return { broker: new ZeronessBroker(state, env), d1, kv, reports };
 }
 const req = (path: string, init: RequestInit = {}) => new Request(`https://zeroness.broker${path}`, init);
 const j = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
@@ -57,8 +59,9 @@ describe("broker integration", () => {
   let b: ZeronessBroker;
   let d1: MemD1;
   let kv: MemKV;
+  let reports: MemR2;
   beforeEach(async () => {
-    ({ broker: b, d1, kv } = makeBroker());
+    ({ broker: b, d1, kv, reports } = makeBroker());
     const res = await b.fetch(j("/session", "POST", {
       sessionId: "sid1", sessionToken: TOK, pubKey: "x",
       policy: {
@@ -124,6 +127,14 @@ describe("broker integration", () => {
   it("rejects a capability op from a mismatched token", async () => {
     const res = await b.fetch(j("/cap/reports", "POST", { path: "x", data: "y" }, { "x-zeroness-token": "wrong" }));
     expect(res.status).toBe(403);
+  });
+
+  it("writes R2 capability data to its configured bucket, not the snapshots bucket", async () => {
+    await b.fetch(j("/cap/reports", "POST", { path: "q3.csv", data: "hello" }, { "x-zeroness-token": TOK }));
+    expect(reports.m.has("u/q3.csv")).toBe(true);      // landed in the reports bucket, with prefix
+    // and did NOT leak into the snapshots bucket
+    const snapKeys = [...(reports.m.keys())].filter((k) => k.startsWith("snapshots/"));
+    expect(snapKeys).toEqual([]);
   });
 
   it("stores a content-addressed snapshot and serves it back", async () => {

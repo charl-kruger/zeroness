@@ -191,8 +191,8 @@ export class ZeronessBroker {
     if (!s || !binding) return json({ error: "unknown capability" }, 404);
 
     if ("r2" in binding) {
-      const bucket = this.env.SNAPSHOTS; // demo maps R2 caps to the snapshots bucket; production binds per-name
-      if (!bucket) return json({ error: "r2 binding unavailable" }, 501);
+      const bucket = this.env[binding.r2] as R2Bucket | undefined;
+      if (!bucket) return json({ error: `R2 binding '${binding.r2}' not found` }, 501);
       const key = `${binding.prefix ?? ""}${body.path ?? ""}`;
       if (method === "POST") {
         if (binding.mode === "ro") return json({ error: "read-only capability" }, 403);
