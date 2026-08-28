@@ -81,6 +81,7 @@ export default {
       body: JSON.stringify({ token, url: target.toString(), method: req.method }),
     });
     if (authRes.status === 401) return deny("unknown or revoked session", 403);
+    if (authRes.status === 429) return deny("rate limited", 429);
     const decision = (await authRes.json()) as AuthorizeResult;
 
     if (decision.verdict === "deny") return deny(decision.reason, 403);
