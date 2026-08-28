@@ -182,7 +182,10 @@ export class ZeronessBroker {
     await this.append({ ts: body.ts ?? Date.now(), event: body.event, detail: body.detail });
     return new Response(null, { status: 204 });
   }
-  private async getAudit(): Promise<AuditEntry[]> { return (await this.state.storage.get<AuditEntry[]>("audit")) ?? []; }
+  private async getAudit(): Promise<AuditEntry[]> {
+    const map = await this.state.storage.list<AuditEntry>({ prefix: "audit:" });
+    return [...map.values()];
+  }
 
   // ---- capability I/O: R2 · D1 · KV ----
   private async capIO(method: string, name: string, body: { path?: string; data?: number[] | string; query?: string; params?: unknown[] }): Promise<Response> {
@@ -282,8 +285,15 @@ export class ZeronessBroker {
   }
   private async saveApprovals(store: ApprovalStore): Promise<void> { store.sweep(); await this.state.storage.put("approvals", store.state); }
   private async append(e: AuditEntry): Promise<void> {
-    const log = (await this.state.storage.get<AuditEntry[]>("audit")) ?? [];
-    log.push(e); await this.state.storage.put("audit", log.slice(-1000));
+    const meta = (await this.state.storage.get<{ next: number; oldest: number }>("auditMeta")) ?? { next: 0, oldest: 0 };
+    await this.state.storage.put(auditKey(meta.next), e);
+    meta.next++;
+    // Trim the oldest entry once we exceed the cap — keeps the working set bounded.
+    if (meta.next - meta.oldest > AUDIT_MAX) {
+      await this.state.storage.delete(auditKey(meta.oldest));
+      meta.oldest++;
+    }
+    await this.state.storage.put("auditMeta", meta);
     // Also emit a compact structured line so Cloudflare Workers Logs captures it
     // (7-day retention, queryable) and Workers Trace Events Logpush can ship it to
     // R2/S3/Splunk/etc. Filter with `zn = "audit"`. See docs/logging.md.
@@ -332,6 +342,8 @@ function isReadOnlySql(sql: string): boolean {
   if (/\b(insert|update|delete|replace|drop|alter|create|attach|detach|reindex|vacuum|pragma)\b/i.test(s)) return false;
   return true;
 }
+const AUDIT_MAX = 1000;
+const auditKey = (seq: number) => `audit:${String(seq).padStart(12, "0")}`;
 function json(v: unknown, status = 200): Response {
   return new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
 }

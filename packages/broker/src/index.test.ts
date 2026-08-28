@@ -7,6 +7,14 @@ class MemStorage {
   async get<T>(k: string): Promise<T | undefined> { const v = this.m.get(k); return v === undefined ? undefined : (JSON.parse(JSON.stringify(v)) as T); }
   async put(k: string, v: unknown): Promise<void> { this.m.set(k, JSON.parse(JSON.stringify(v))); }
   async delete(k: string): Promise<void> { this.m.delete(k); }
+  async list<T>(opts: { prefix?: string; limit?: number; reverse?: boolean } = {}): Promise<Map<string, T>> {
+    let keys = [...this.m.keys()].filter((k) => !opts.prefix || k.startsWith(opts.prefix)).sort();
+    if (opts.reverse) keys.reverse();
+    if (opts.limit) keys = keys.slice(0, opts.limit);
+    const out = new Map<string, T>();
+    for (const k of keys) out.set(k, JSON.parse(JSON.stringify(this.m.get(k))) as T);
+    return out;
+  }
 }
 class MemR2 {
   m = new Map<string, string>();
@@ -152,6 +160,17 @@ describe("broker integration", () => {
     const events = audit.map((a: { event: string }) => a.event);
     expect(events).toContain("egress:allow");
     expect(events).toContain("egress:deny");
+  });
+
+  it("keeps the audit log chronological and bounded", async () => {
+    for (let i = 0; i < 1005; i++) {
+      await b.fetch(j("/audit", "POST", { event: "tick", detail: { i } }));
+    }
+    const audit = await (await b.fetch(req("/audit", { method: "GET" }))).json();
+    const ticks = audit.filter((a: { event: string }) => a.event === "tick");
+    expect(ticks.length).toBe(1000);                              // trimmed to the cap
+    expect((ticks[0].detail as { i: number }).i).toBe(5);         // oldest 5 dropped
+    expect((ticks.at(-1).detail as { i: number }).i).toBe(1004);  // newest retained, in order
   });
 
   it("injects a brokered accessToken identity on an allowed request", async () => {
