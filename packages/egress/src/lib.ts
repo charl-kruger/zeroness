@@ -37,6 +37,18 @@ export function capName(req: Request): string | null {
   }
 }
 
+const SNAP_PREFIX = "/__zeroness/snapshot/";
+
+/** If this GET request is a snapshot download, return the ref; else null. */
+export function snapshotRef(req: Request): string | null {
+  try {
+    const p = new URL(req.url).pathname;
+    if (!p.startsWith(SNAP_PREFIX)) return null;
+    const ref = p.slice(SNAP_PREFIX.length);
+    return /^snap_[0-9a-f]+$/.test(ref) ? ref : null;   // upload/ and junk excluded
+  } catch { return null; }
+}
+
 export function jsonResponse(v: unknown, status = 200): Response {
   return new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
 }

@@ -14,7 +14,7 @@
  * secrets: the Broker mints identity and resolves capabilities, per request.
  */
 
-import { sessionToken, intendedTarget, capName, deny } from "./lib";
+import { sessionToken, intendedTarget, capName, snapshotRef, deny } from "./lib";
 
 export interface Env {
   ZERONESS_BROKER: DurableObjectNamespace;
@@ -46,6 +46,18 @@ export default {
         body: JSON.stringify({ event: "heartbeat", detail }),
       });
       return new Response(null, { status: 204 });
+    }
+
+    // ---- snapshot download: stream a content-addressed snapshot from the Broker ----
+    if (req.method === "GET") {
+      const ref = snapshotRef(req);
+      if (ref) {
+        const res = await broker.fetch(`https://zeroness.broker/snapshot/${ref}`, {
+          method: "GET",
+          headers: { "x-zeroness-token": token },
+        });
+        return new Response(res.body, { status: res.status });
+      }
     }
 
     // ---- snapshot upload: forward the FS tarball to the Broker (content-addressed) ----

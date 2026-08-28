@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sessionToken, intendedTarget, capName } from "./lib";
+import { sessionToken, intendedTarget, capName, snapshotRef } from "./lib";
 
 const mk = (url: string, headers: Record<string, string> = {}, method = "GET") => new Request(url, { method, headers });
 
@@ -26,5 +26,10 @@ describe("egress request parsing", () => {
   it("recognizes capability paths and decodes the name", () => {
     expect(capName(mk("https://edge.workers.dev/__zeroness/cap/reports?path=x"))).toBe("reports");
     expect(capName(mk("https://edge.workers.dev/anything"))).toBeNull();
+  });
+  it("recognizes a snapshot download path and validates the ref", () => {
+    expect(snapshotRef(mk("https://edge.workers.dev/__zeroness/snapshot/snap_abc123"))).toBe("snap_abc123");
+    expect(snapshotRef(mk("https://edge.workers.dev/__zeroness/snapshot/upload"))).toBeNull();
+    expect(snapshotRef(mk("https://edge.workers.dev/__zeroness/snapshot/../evil"))).toBeNull();
   });
 });
