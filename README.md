@@ -76,8 +76,9 @@ export default {
 
 - **Default-deny egress**: the sandbox reaches only the hosts/paths/methods you allow.
 - **No secrets in the sandbox**: the Broker injects short-lived, audience-bound identity at the moment of egress. Dump the filesystem and you get nothing reusable.
-- **Capability-scoped resources**: R2/D1/KV/secrets are opaque `cap:` handles; the code can't enumerate or forge bindings.
+- **Capability-scoped resources**: R2/D1/KV/queue/secrets are opaque `cap:` handles; the code can't enumerate or forge bindings, and `mode:"ro"` is enforced (D1 read-only rejects writes, CTE-fed writes, and mutating PRAGMAs).
 - **Human-in-the-loop**: a rule can be `ask`, routed to an approval before the call proceeds.
+- **Rate-limited**: a per-session token bucket caps egress + capability ops at the Broker (configurable), returning `429` on abuse.
 - **Signed command channel**: every command is Ed25519-signed (body-hash + freshness + replay protection) and verified by the in-sandbox agent.
 - **Drop-in**: the same surface as `@cloudflare/sandbox`.
 

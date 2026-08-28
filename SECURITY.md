@@ -65,8 +65,13 @@ localhost. zeroness is designed so that this buys the attacker nothing reusable.
   short-lived at the edge, but the Broker itself holds the resolvable bindings.
 - **`ask` fatigue.** Auto-approving to reduce friction defeats the control; keep
   `ask` scoped to genuinely risky routes.
-- **Denial of service.** A sandbox can spam egress/cap ops; add rate limits at
-  the Broker/Egress for production.
+- **Denial of service.** A sandbox can spam egress/cap ops. The Broker applies a
+  per-session token-bucket rate limit to the `authorize` and capability paths
+  (default burst 100, 50/s; tune with `RATE_LIMIT_BURST` / `RATE_LIMIT_RPS`, or
+  set either to `0` to disable), returning `429` when a session exceeds its
+  budget. The bucket is per-DO-instance and in-memory (it resets on eviction), so
+  it is a coarse abuse/cost ceiling, not a hard quota; pair it with account-level
+  limits for stricter guarantees.
 
 ## Non-goals
 

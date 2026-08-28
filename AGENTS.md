@@ -142,7 +142,12 @@ resources: {
 
 `ResourceBinding` variants: `{r2,mode?,prefix?}` · `{d1,mode?}` · `{kv,mode?,prefix?}`
 · `{queue}` · `{secret}` · `{accessToken}` · `{oidc:{audience,subject?,ttlSeconds?}}`.
-`mode:"ro"` blocks writes. `prefix` scopes R2/KV keys.
+`mode:"ro"` blocks writes (enforced for R2/KV; for D1, `ro` allows only
+read-shaped SQL — SELECT/WITH/EXPLAIN — and rejects writes, CTE-fed writes, and
+mutating PRAGMAs). `prefix` scopes R2/KV keys. `{queue}` is a send-only producer:
+`box.writeFile("cap:name://", data)` sends `data` as one message; reads are not
+supported. Each `{r2}` / `{d1}` / `{kv}` / `{queue}` binding resolves to a
+Worker binding of that name on the Broker (bind one per capability).
 
 **Data resources** (r2/d1/kv) are used via file paths in the sandbox:
 `box.writeFile("cap:reports://q3.csv", data)` / `box.readFile("cap:reports://q3.csv")`.
@@ -221,7 +226,7 @@ raw sockets/other protocols.
 
 ## 13. Working in this repo
 
-- Monorepo: `pnpm install`, `pnpm -r build`, `pnpm -r test` (44 tests).
+- Monorepo: `pnpm install`, `pnpm -r build`, `pnpm -r test` (80 tests).
 - Packages: `core` (wrapper/policy/signing/caps), `broker` (trust-root DO),
   `egress` (enforcement Worker), `agent` (`zeronessd`), `policy` (lint/simulate),
   `gatekeeper` (approvals), `tls` (opt-in MITM CA), `create-zeroness` (scaffolder).

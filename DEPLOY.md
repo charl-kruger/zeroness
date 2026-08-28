@@ -15,7 +15,7 @@ end-to-end on a real Cloudflare account.
 ```bash
 pnpm install
 pnpm build
-pnpm -r test        # 44 tests should pass locally before you deploy
+pnpm -r test        # 80 tests should pass locally before you deploy
 ```
 
 ## 2. Create the R2 bucket (snapshots + R2 capabilities)
@@ -24,6 +24,11 @@ pnpm -r test        # 44 tests should pass locally before you deploy
 npx wrangler r2 bucket create zeroness-snapshots     # matches wrangler.jsonc bindings
 ```
 
+Each `{r2}`/`{d1}`/`{kv}`/`{queue}` capability resolves to a **Worker binding of
+that name on the Broker**, so bind one per capability in `packages/broker/
+wrangler.jsonc` (e.g. an R2 bucket named `reports` for `{ r2: "reports" }`). The
+snapshots bucket is separate and used only for FS checkpoints.
+
 ## 3. Deploy the Broker (the trust root)
 
 ```bash
@@ -31,6 +36,9 @@ pnpm -C packages/broker deploy
 # note the deployed name: zeroness-broker
 # add any secrets your policies reference, e.g.:
 npx wrangler secret put STRIPE_RO --name zeroness-broker
+# optional per-session rate limits (defaults: burst 100, 50/s; 0 disables):
+npx wrangler secret put RATE_LIMIT_BURST --name zeroness-broker
+npx wrangler secret put RATE_LIMIT_RPS --name zeroness-broker
 ```
 
 ## 4. Deploy the Egress Worker (enforcement)
