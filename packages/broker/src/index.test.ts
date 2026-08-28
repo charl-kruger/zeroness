@@ -26,6 +26,10 @@ class MemKV {
   async put(k: string, v: string | Uint8Array) { this.m.set(k, typeof v === "string" ? v : Buffer.from(v).toString("binary")); }
   async get(k: string) { return this.m.get(k) ?? null; }
 }
+class MemQueue {
+  sent: unknown[] = [];
+  async send(m: unknown) { this.sent.push(m); }
+}
 class MemD1 {
   rows: Array<Record<string, unknown>> = [];
   writes: string[] = [];           // every statement that actually executed a write
@@ -50,14 +54,16 @@ function makeBroker() {
   const d1 = new MemD1();
   const kv = new MemKV();
   const reports = new MemR2();
+  const events = new MemQueue();
   const env = {
     SNAPSHOTS: new MemR2() as unknown as R2Bucket,
     SECRETS: { STRIPE_RO: "sk_test_abc" },
     analytics: d1 as unknown as D1Database,
     cache: kv as unknown as KVNamespace,
     reports: reports as unknown as R2Bucket,
+    events: events as unknown as Queue,
   };
-  return { broker: new ZeronessBroker(state, env), d1, kv, reports };
+  return { broker: new ZeronessBroker(state, env), d1, kv, reports, events };
 }
 const req = (path: string, init: RequestInit = {}) => new Request(`https://zeroness.broker${path}`, init);
 const j = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
@@ -68,8 +74,9 @@ describe("broker integration", () => {
   let d1: MemD1;
   let kv: MemKV;
   let reports: MemR2;
+  let events: MemQueue;
   beforeEach(async () => {
-    ({ broker: b, d1, kv, reports } = makeBroker());
+    ({ broker: b, d1, kv, reports, events } = makeBroker());
     const res = await b.fetch(j("/session", "POST", {
       sessionId: "sid1", sessionToken: TOK, pubKey: "x",
       policy: {
@@ -86,6 +93,7 @@ describe("broker integration", () => {
         analyticsRw: { d1: "analytics", mode: "rw" },
         cacheRw: { kv: "cache", mode: "rw" },
         cacheRo: { kv: "cache", mode: "ro" },
+        eventsCap: { queue: "events" },
       },
     }));
     expect(res.status).toBe(200);
@@ -196,6 +204,18 @@ describe("broker integration", () => {
   it("blocks a write to a read-only KV capability", async () => {
     const w = await b.fetch(j("/cap/cacheRo", "POST", { path: "k1", data: "v1" }, { "x-zeroness-token": TOK }));
     expect(w.status).toBe(403);
+  });
+
+  it("sends a message through a queue capability", async () => {
+    const res = await b.fetch(j("/cap/eventsCap", "POST", { data: "hello-queue" }, { "x-zeroness-token": TOK }));
+    expect((await res.json()).ok).toBe(true);
+    expect(events.sent).toEqual(["hello-queue"]);
+  });
+
+  it("rejects a non-POST on a queue capability (send-only)", async () => {
+    const res = await b.fetch(req("/cap/eventsCap?path=x", { method: "GET", headers: { "x-zeroness-token": TOK } }));
+    expect(res.status).toBe(405);
+    expect(events.sent).toEqual([]);
   });
 
   it("reads through a D1 capability", async () => {

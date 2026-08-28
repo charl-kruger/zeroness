@@ -254,7 +254,16 @@ export class ZeronessBroker {
       return json({ content: await ns.get(key) });
     }
 
-    return json({ error: "capability type not yet wired (queue)" }, 501);
+    if ("queue" in binding) {
+      const q = this.env[binding.queue] as Queue | undefined;
+      if (!q) return json({ error: `Queue binding '${binding.queue}' not found` }, 501);
+      if (method !== "POST") return json({ error: "queue capability is send-only (use POST)" }, 405);
+      await q.send(body.data ?? null);
+      await this.append({ ts: Date.now(), event: "cap:queue:send", detail: { name } });
+      return json({ ok: true });
+    }
+
+    return json({ error: "unknown capability type" }, 501);
   }
 
   // ---- opt-in TLS interception CA (cert is public; key gates leaf issuance) ----
