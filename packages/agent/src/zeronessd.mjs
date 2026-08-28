@@ -72,6 +72,23 @@ export const defaultRunners = {
     });
     return res.json();
   },
+  async restore({ ref }, ctx) {
+    if (!ctx.egressUrl) throw new Error("restore requires ZERONESS_EGRESS_URL");
+    if (!/^snap_[0-9a-f]+$/.test(String(ref ?? ""))) throw new Error("invalid snapshot ref");
+    const res = await fetch(`${ctx.egressUrl}/__zeroness/snapshot/${ref}`, {
+      headers: { "x-zeroness-session-token": ctx.sessionToken ?? "" },
+    });
+    if (!res.ok) throw new Error(`restore download failed: ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    await new Promise((resolve, reject) => {
+      const tar = spawn("tar", ["xzf", "-", "-C", "/"]);
+      tar.on("error", reject);
+      tar.on("close", (code) => (code === 0 ? resolve(undefined) : reject(new Error(`tar exit ${code}`))));
+      tar.stdin.write(buf);
+      tar.stdin.end();
+    });
+    return { restored: ref };
+  },
 };
 
 /** Verify then dispatch a command. Pure w.r.t. injected `runners` — unit-testable. */

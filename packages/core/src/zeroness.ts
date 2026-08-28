@@ -124,9 +124,9 @@ export class Zeroness {
   }
 
   /** Resume/branch a sandbox from a snapshot ref returned by ZeronessSandbox.snapshot(). */
-  async resume(snapshotRef: string, id = crypto.randomUUID()): Promise<ZeronessSandbox> {
-    const box = await this.sandbox(id, {});
-    await box.exec(`zeronessd restore ${shq(snapshotRef)}`); // agent pulls checkpoint from R2 via broker
+  async resume(snapshotRef: string, id = crypto.randomUUID(), config: ZeronessConfig = {}): Promise<ZeronessSandbox> {
+    const box = await this.sandbox(id, config);
+    await box.restore(snapshotRef);
     return box;
   }
 
@@ -203,6 +203,18 @@ export class ZeronessSandbox {
     if (!viaAgent?.ref) throw new Error("agent snapshot failed");
     await this.audit("snapshot", { ref: viaAgent.ref, agent: true });
     return viaAgent.ref;
+  }
+
+  /**
+   * Restore the sandbox FS from a content-addressed snapshot ref. Requires the
+   * agent: zeronessd downloads the snapshot via the Egress Worker and untars it.
+   */
+  async restore(ref: string): Promise<unknown> {
+    if (!this.config.agentUrl) throw new Error("restore() requires the zeronessd agent — set `agentUrl` in the sandbox config");
+    const viaAgent = await this.dispatch("restore", { ref });
+    if (!viaAgent) throw new Error("agent restore failed");
+    await this.audit("restore", { ref, agent: true });
+    return viaAgent;
   }
 
   /** Full audit trail: every egress verdict + resource op + command. */
