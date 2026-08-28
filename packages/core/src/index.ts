@@ -16,3 +16,5 @@ export {
 export type { Envelope, VerifyOpts } from "./signing";
 export { emitAuditLog, formatAuditLine, ZN_AUDIT } from "./audit-log";
 export type { AuditLogEvent, AuditLogLine } from "./audit-log";
+export { TokenBucket } from "./rate-limit";
+export type { TokenBucketState } from "./rate-limit";
