@@ -251,3 +251,20 @@ describe("broker integration", () => {
     expect((await res.json()).results).toEqual([{ n: 1 }]);
   });
 });
+
+describe("broker rate limiting", () => {
+  it("rate-limits authorize once the per-session burst is exhausted", async () => {
+    const state = { storage: new MemStorage() } as unknown as DurableObjectState;
+    const env = { SNAPSHOTS: new MemR2() as unknown as R2Bucket, SECRETS: {}, RATE_LIMIT_BURST: "2", RATE_LIMIT_RPS: "0.0001" };
+    const rb = new ZeronessBroker(state, env);
+    await rb.fetch(j("/session", "POST", {
+      sessionId: "rl", sessionToken: TOK, pubKey: "x",
+      policy: { default: "deny", allow: [{ host: "api.github.com" }] },
+      resources: {},
+    }));
+    const call = () => rb.fetch(j("/authorize", "POST", { token: TOK, url: "https://api.github.com/x", method: "GET" }));
+    expect((await call()).status).toBe(200);   // 1st — within burst
+    expect((await call()).status).toBe(200);   // 2nd — within burst
+    expect((await call()).status).toBe(429);   // 3rd — burst exhausted, refill negligible
+  });
+});

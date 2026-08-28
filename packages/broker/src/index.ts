@@ -8,7 +8,7 @@
  * the exact headers to inject, minted fresh per call.
  */
 
-import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog } from "@zeroness/core";
+import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog, TokenBucket } from "@zeroness/core";
 import { ApprovalStore, emptyApprovalState, type ApprovalState, ManualGatekeeper, WebhookGatekeeper, type GatekeeperAdapter } from "@zeroness/gatekeeper";
 
 export interface Env {
@@ -36,6 +36,7 @@ export class ZeronessBroker {
   private gatekeeper: GatekeeperAdapter;
   /** Cached session id for audit-log attribution (avoids a storage read per append). */
   private sessionId?: string;
+  private limiter?: TokenBucket;
   constructor(private state: DurableObjectState, private env: Env) {
     this.gatekeeper = env.GATEKEEPER_URL ? new WebhookGatekeeper(env.GATEKEEPER_URL) : new ManualGatekeeper();
   }
@@ -104,6 +105,10 @@ export class ZeronessBroker {
   private async authorize(body: { token: string; url: string; method: string }): Promise<Response> {
     const s = await this.session();
     if (!s || s.sessionToken !== body.token) return json({ error: "unknown session" }, 401);
+    if (!this.rateLimitAllowed()) {
+      await this.append({ ts: Date.now(), event: "ratelimit:block", detail: { path: "authorize" } });
+      return json({ error: "rate_limited" }, 429);
+    }
 
     const u = new URL(body.url);
     const decision = evaluate(s.policy, { host: u.hostname, method: body.method, path: u.pathname });
@@ -192,6 +197,10 @@ export class ZeronessBroker {
     const s = await this.session();
     const binding = s?.resources[name] as ResourceBinding | undefined;
     if (!s || !binding) return json({ error: "unknown capability" }, 404);
+    if (!this.rateLimitAllowed()) {
+      await this.append({ ts: Date.now(), event: "ratelimit:block", detail: { path: "cap", name } });
+      return json({ error: "rate_limited" }, 429);
+    }
 
     if ("r2" in binding) {
       const bucket = this.env[binding.r2] as R2Bucket | undefined;
@@ -279,6 +288,14 @@ export class ZeronessBroker {
 
   // ---- helpers ----
   private async session(): Promise<SessionState | undefined> { return this.state.storage.get<SessionState>("session"); }
+  /** Per-session token bucket. Defaults: burst 100, 50/s. Disabled when either is <= 0. */
+  private rateLimitAllowed(): boolean {
+    const rps = Number(this.env.RATE_LIMIT_RPS ?? 50);
+    const burst = Number(this.env.RATE_LIMIT_BURST ?? 100);
+    if (!(rps > 0) || !(burst > 0)) return true; // explicitly disabled
+    if (!this.limiter) this.limiter = new TokenBucket(burst, rps);
+    return this.limiter.tryConsume();
+  }
   private async approvals(): Promise<ApprovalStore> {
     const st = (await this.state.storage.get<ApprovalState>("approvals")) ?? emptyApprovalState();
     return new ApprovalStore(st);
