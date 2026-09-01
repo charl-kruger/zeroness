@@ -113,7 +113,24 @@ stay green.
 **Done when:** the broker integration flow passes on celld, including an `oidc:`
 identity via the fallback, with `nodejs_compat` set.
 
-## Phase 2 — investigate governing celld workloads (Mode B, the hard part)
+## Phase 2 — investigate governing celld workloads (Mode B) — ✅ INVESTIGATED: b2 blocked
+
+**Empirical finding (celld 0.4.0):** an untrusted celld isolate's global `fetch`
+reaches the internet freely (`/egress` probe → `reachedInternet:true, status:200,
+hasFetch:true`). celld exposes **no egress-restriction mechanism** — the only
+network-related controls are `CELLD_MAX_CELL_REQUESTS` (concurrency) and
+`CELLD_FETCH_TIMEOUT_S` (timeout). There is no allowlist, no interception, and no
+way to disable or redirect an isolate's `fetch` via configuration.
+
+**Conclusion:** the **b2** hypothesis (run the isolate with no ambient `fetch`,
+only zeroness `cap:` bindings) is **not achievable on celld as-is** — you cannot
+strip or redirect the ambient fetch of an untrusted isolate through config. Strong
+egress governance of untrusted celld workloads therefore requires **Phase 3**
+(an upstream `globalOutbound`-style hook). b3 (cooperative shim) remains a
+non-jail. The original analysis below is retained for context.
+
+---
+
 
 celld's untrusted workload is a **V8 isolate**, not a container, and there is
 **no egress-interception hook**. Two walls:
