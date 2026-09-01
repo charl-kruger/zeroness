@@ -18,3 +18,5 @@ export { emitAuditLog, formatAuditLine, ZN_AUDIT } from "./audit-log";
 export type { AuditLogEvent, AuditLogLine } from "./audit-log";
 export { TokenBucket } from "./rate-limit";
 export type { TokenBucketState } from "./rate-limit";
+export { edGenerateJwk, edSignJwk, detectEdBackend, _resetEdBackend } from "./ed25519";
+export type { EdBackend } from "./ed25519";

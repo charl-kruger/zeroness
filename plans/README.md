@@ -29,7 +29,7 @@ here.
 | 006 | Gate CI on typecheck + add `.editorconfig` | P3 | S | — | DONE (commit `7431a57`, worktree `zeroness-exec-006`, based on main) |
 | 007 | Per-session rate limiting at the Broker | P2 | M | 004 (stacks) | DONE (commits `0b6984a`/`037e521`/`a1b4ec3`, worktree `zeroness-exec-007`, stacked on 004) |
 | 008 | Wire the queue capability (send-only) | P3 | S | 007 (stacks) | DONE (commit `37bbfec`, worktree `zeroness-exec-008`, stacked on 007) |
-| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 DONE (Mode A viable; crypto scoped to `mintOidc` → node:crypto). Phases 1–3 pending. |
+| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 + PHASE 1 DONE on branch `feat/celld-support` (real Broker runs on celld; OIDC via node:crypto fallback proven). Phases 2–3 pending. |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED
 (one-line rationale).

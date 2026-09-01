@@ -62,7 +62,13 @@ sources archived in the advisor scratchpad). Verbatim outcomes:
    agent** channel; celld has no agent, so it is out of scope for a celld
    control-plane deployment.
 
-## Phase 1 — Broker + Egress on celld (the deliverable)
+## Phase 1 — Broker + Egress on celld (the deliverable) — ✅ DONE (branch `feat/celld-support`)
+
+**Result:** the real `@zeroness/broker` DO runs on `celld dev` and serves the full
+`session → authorize(allow/deny) → oidc-identity → audit` flow. `/edbackend`
+reports `node` (fallback selected); the `oidc:` identity mints a valid EdDSA JWT
+via `node:crypto`; audit uses the plan-004 list storage and celld's `cell_console`
+captures every line. Steps below reflect what shipped.
 
 **Goal:** `@zeroness/broker` + `@zeroness/egress` run on a self-hosted celld
 fleet, so the zeroness control plane needs no Cloudflare account.
