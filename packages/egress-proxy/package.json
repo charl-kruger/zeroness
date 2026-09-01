@@ -1,0 +1,28 @@
+{
+  "name": "@zeroness/egress-proxy",
+  "version": "0.4.0",
+  "description": "Self-hosted egress proxy — the network-cage enforcement point for zeroness on substrates without a built-in egress hook (e.g. celld).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "bin": { "zeroness-egress-proxy": "dist/cli.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@zeroness/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22"
+  },
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "git+https://github.com/charl-kruger/zeroness.git", "directory": "packages/egress-proxy" },
+  "homepage": "https://github.com/charl-kruger/zeroness#readme",
+  "bugs": "https://github.com/charl-kruger/zeroness/issues"
+}

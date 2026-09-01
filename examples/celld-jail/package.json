@@ -1,0 +1,11 @@
+{
+  "name": "@zeroness/example-celld-jail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference: a fail-closed egress jail around an untrusted workload, enforced by @zeroness/egress-proxy. The pattern for governing egress on substrates without a built-in hook (e.g. self-hosted celld).",
+  "dependencies": {
+    "@zeroness/egress-proxy": "workspace:*",
+    "@zeroness/core": "workspace:*"
+  }
+}

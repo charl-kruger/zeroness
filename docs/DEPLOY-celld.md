@@ -18,16 +18,22 @@ celld runs **V8 isolates, not containers**. That means:
 - ✅ **Supported:** the zeroness **control plane** (Broker + Egress) — policy
   enforcement, brokered identity, capabilities (R2/D1/KV/queue), approvals,
   audit — governing traffic that transits the Egress Worker.
-- ❌ **Not supported on celld:** the container **network jail**
-  (`createGovernedSandbox` over `@cloudflare/sandbox`). celld has no containers
-  and no outbound-fetch interception, so untrusted-code egress cannot be forced
-  through the Egress the way it is on Cloudflare Sandbox. Governing untrusted
-  workloads *hosted on celld* is unsolved (celld isolates would need a
-  fetch-less/cap-only mode or an upstream egress hook — Phase 2/3 of plan 009).
+- ⚠️ **Different mechanism for the network jail.** celld has no containers and no
+  outbound-fetch hook, so the Cloudflare `createGovernedSandbox` primitive does
+  not apply. Instead, jail egress **at the network boundary around the celld
+  unit** (the Vercel Sandbox model): a fail-closed firewall + the
+  [`@zeroness/egress-proxy`](../packages/egress-proxy) authorizing every
+  connection through the Broker. Untrusted code that ignores `HTTP_PROXY` still
+  cannot egress — there is no direct route. See
+  [`examples/celld-jail`](../examples/celld-jail) for a proven reference.
 
-Do **not** tell users that zeroness jails untrusted code on celld the way it does
-on Cloudflare Sandbox. On celld, zeroness governs identity, capabilities, and
-audit for cooperative or Egress-routed traffic.
+**Honest boundary:** on celld you get default-deny egress + brokered identity +
+audit via the network jail, and **one tenant per jailed unit** (VM or locked
+netns) — never a shared isolate, since a V8 isolate is not a strong enough wall
+for hostile code (Vercel uses a microVM for the same reason). HTTPS identity
+injection / path-scoped policy needs a per-tenant MITM CA (`@zeroness/tls`);
+without it the jail governs on CONNECT host+port, which still enforces
+default-deny by host.
 
 ## Requirements
 

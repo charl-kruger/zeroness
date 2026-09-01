@@ -127,7 +127,13 @@ way to disable or redirect an isolate's `fetch` via configuration.
 cooperative in-bundle `fetch` shim) is bypassable — a convenience, not a jail. But
 b2/b3 were both looking at the **wrong layer**. See Phase 3.
 
-## Phase 3 — govern egress at the network boundary (the Vercel model, no upstream celld change)
+## Phase 3 — govern egress at the network boundary (the Vercel model, no upstream celld change) — ✅ BUILT + PROVEN
+
+**Result:** shipped `@zeroness/egress-proxy` (the authorizing jail proxy) and
+`examples/celld-jail` (a fail-closed firewall + proxy reference). Proven in Docker:
+allowed host via proxy → 200; denied host → proxy deny; **code ignoring `HTTP_PROXY`
+and connecting directly → firewall DROP (http=000)** — the jail holds; internal
+metadata → floor 403. No upstream celld change was needed. Design below.
 
 **Key insight from the Vercel Sandbox reconstruction** (`~/dev/vercel-comp/
 vercel-sandbox-reconstruction/`): Vercel does **not** intercept `fetch` inside the
