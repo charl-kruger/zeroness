@@ -8,7 +8,7 @@
  * the exact headers to inject, minted fresh per call.
  */
 
-import { evaluate, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog, TokenBucket } from "@zeroness/core";
+import { evaluate, isForbiddenEgressHost, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog, TokenBucket } from "@zeroness/core";
 import { ApprovalStore, emptyApprovalState, type ApprovalState, ManualGatekeeper, WebhookGatekeeper, type GatekeeperAdapter } from "@zeroness/gatekeeper";
 
 export interface Env {
@@ -111,6 +111,10 @@ export class ZeronessBroker {
     }
 
     const u = new URL(body.url);
+    if (isForbiddenEgressHost(u.hostname)) {
+      await this.append({ ts: Date.now(), event: "egress:deny", detail: { url: body.url, reason: "internal address blocked" } });
+      return json({ verdict: "deny", reason: "internal address blocked", target: body.url });
+    }
     const decision = evaluate(s.policy, { host: u.hostname, method: body.method, path: u.pathname });
 
     if (decision.verdict === "deny") {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluate, type NetworkPolicy } from "./policy";
+import { evaluate, isForbiddenEgressHost, type NetworkPolicy } from "./policy";
 
 const req = (host: string, path = "/", method = "GET") => ({ host, path, method });
 
@@ -47,5 +47,32 @@ describe("network policy engine", () => {
   it("layers transforms onto an allowed request", () => {
     const d = evaluate(policy, req("api.github.com", "/repos/a/b"));
     expect(d.rewrite?.headers?.["user-agent"]).toBe("zeroness");
+  });
+
+  it("matches a path rule against the decoded path (percent-encoding cannot evade)", () => {
+    const p: NetworkPolicy = { default: "deny", allow: [{ host: "api.x.com", path: "/secret" }] };
+    expect(evaluate(p, { host: "api.x.com", method: "GET", path: "/%73ecret" }).verdict).toBe("allow");
+  });
+
+  it("normalizes encoded dot-segments so a rule cannot fire out of scope", () => {
+    const p: NetworkPolicy = { default: "deny", allow: [{ host: "api.x.com", path: "/pub/**" }] };
+    expect(evaluate(p, { host: "api.x.com", method: "GET", path: "/pub/%2e%2e/admin" }).verdict).toBe("deny");
+  });
+
+  it("treats a trailing-dot FQDN as the same host", () => {
+    const p: NetworkPolicy = { default: "deny", deny: [{ host: "evil.com" }], allow: [{ host: "*" }] };
+    expect(evaluate(p, { host: "evil.com.", method: "GET", path: "/" }).verdict).toBe("deny");
+  });
+
+  it("root-escaping dot-segments cannot bypass a path deny", () => {
+    const p: NetworkPolicy = { default: "deny", deny: [{ host: "api.x.com", path: "/admin/**" }], allow: [{ host: "api.x.com" }] };
+    expect(evaluate(p, { host: "api.x.com", method: "GET", path: "/../admin/x" }).verdict).toBe("deny");
+  });
+
+  it("flags internal + metadata targets", () => {
+    for (const h of ["169.254.169.254", "127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "localhost", "::1", "metadata.google.internal", "100.64.0.5"])
+      expect(isForbiddenEgressHost(h)).toBe(true);
+    for (const h of ["api.github.com", "8.8.8.8", "203.0.113.5"])
+      expect(isForbiddenEgressHost(h)).toBe(false);
   });
 });

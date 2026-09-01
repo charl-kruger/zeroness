@@ -109,6 +109,17 @@ describe("broker integration", () => {
     expect(d.verdict).toBe("deny");
   });
 
+  it("hard-denies an egress request to an internal address", async () => {
+    const d = await (await b.fetch(j("/authorize", "POST", { token: TOK, url: "http://169.254.169.254/latest/meta-data", method: "GET" }))).json();
+    expect(d.verdict).toBe("deny");
+    expect(d.reason).toMatch(/internal address/);
+  });
+
+  it("hard-denies an IPv6 loopback target", async () => {
+    const d = await (await b.fetch(j("/authorize", "POST", { token: TOK, url: "http://[::1]:8080/x", method: "GET" }))).json();
+    expect(d.verdict).toBe("deny");
+  });
+
   it("rejects an unknown/forged session token", async () => {
     const res = await b.fetch(j("/authorize", "POST", { token: "wrong", url: "https://api.github.com/repos/a/b", method: "GET" }));
     expect(res.status).toBe(401);
