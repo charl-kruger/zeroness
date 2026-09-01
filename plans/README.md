@@ -29,7 +29,8 @@ here.
 | 006 | Gate CI on typecheck + add `.editorconfig` | P3 | S | — | DONE (commit `7431a57`, worktree `zeroness-exec-006`, based on main) |
 | 007 | Per-session rate limiting at the Broker | P2 | M | 004 (stacks) | DONE (commits `0b6984a`/`037e521`/`a1b4ec3`, worktree `zeroness-exec-007`, stacked on 004) |
 | 008 | Wire the queue capability (send-only) | P3 | S | 007 (stacks) | DONE (commit `37bbfec`, worktree `zeroness-exec-008`, stacked on 007) |
-| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 + PHASE 1 DONE (`feat/celld-support`): real Broker runs on celld; OIDC via node:crypto fallback. PHASE 2 investigated: b2 blocked (celld has no egress-restriction knob). PHASE 3 = upstream celld hook (maintainer's call). |
+| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 + PHASE 1 DONE (`feat/celld-support`): real Broker on celld; OIDC via node:crypto fallback. PHASE 2/3 REDESIGNED around the Vercel model: govern egress at the **network boundary** (host-side netns jail + transparent proxy → Egress + MITM CA), no upstream celld change needed. |
+| 010 | Harden the egress policy matcher (canonicalization, dest-IP floor, host norm.) | P1 | M | — | TODO — grounded in the Vercel firewall red-team (path-canon differential #1, internal-address floor, trailing-dot host). Improves Cloudflare + celld. |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED
 (one-line rationale).
