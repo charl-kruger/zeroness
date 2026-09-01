@@ -8,7 +8,7 @@
  * the exact headers to inject, minted fresh per call.
  */
 
-import { evaluate, isForbiddenEgressHost, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog, TokenBucket } from "@zeroness/core";
+import { evaluate, isForbiddenEgressHost, type NetworkPolicy, type ResourceMap, type ResourceBinding, mintOpaqueToken, emitAuditLog, TokenBucket, edGenerateJwk, edSignJwk } from "@zeroness/core";
 import { ApprovalStore, emptyApprovalState, type ApprovalState, ManualGatekeeper, WebhookGatekeeper, type GatekeeperAdapter } from "@zeroness/gatekeeper";
 
 export interface Env {
@@ -332,18 +332,18 @@ export class ZeronessBroker {
   }
   private secret(name: string): string | undefined { return this.env.SECRETS?.[name] ?? (this.env[name] as string | undefined); }
   private async mintOidc(audience: string, subject: string, ttl: number): Promise<string> {
+    // Ed25519 via a portable backend: crypto.subtle on Cloudflare, node:crypto on
+    // runtimes whose subtle lacks Ed25519 (e.g. celld). See @zeroness/core/ed25519.
     let jwk = await this.state.storage.get<JsonWebKey>("oidc-key");
-    let priv: CryptoKey;
     if (!jwk) {
-      const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
-      jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-      await this.state.storage.put("oidc-key", jwk); priv = pair.privateKey;
-    } else priv = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" }, false, ["sign"]);
+      jwk = await edGenerateJwk();
+      await this.state.storage.put("oidc-key", jwk);
+    }
     const now = Math.floor(Date.now() / 1000);
     const header = b64url(JSON.stringify({ alg: "EdDSA", typ: "JWT" }));
     const payload = b64url(JSON.stringify({ iss: "zeroness", sub: subject, aud: audience, iat: now, exp: now + ttl, jti: mintOpaqueToken() }));
-    const sig = await crypto.subtle.sign({ name: "Ed25519" }, priv, new TextEncoder().encode(`${header}.${payload}`));
-    return `${header}.${payload}.${b64urlBytes(new Uint8Array(sig))}`;
+    const sig = await edSignJwk(jwk, new TextEncoder().encode(`${header}.${payload}`));
+    return `${header}.${payload}.${b64urlBytes(sig)}`;
   }
 }
 

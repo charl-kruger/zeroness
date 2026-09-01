@@ -62,7 +62,13 @@ sources archived in the advisor scratchpad). Verbatim outcomes:
    agent** channel; celld has no agent, so it is out of scope for a celld
    control-plane deployment.
 
-## Phase 1 — Broker + Egress on celld (the deliverable)
+## Phase 1 — Broker + Egress on celld (the deliverable) — ✅ DONE (branch `feat/celld-support`)
+
+**Result:** the real `@zeroness/broker` DO runs on `celld dev` and serves the full
+`session → authorize(allow/deny) → oidc-identity → audit` flow. `/edbackend`
+reports `node` (fallback selected); the `oidc:` identity mints a valid EdDSA JWT
+via `node:crypto`; audit uses the plan-004 list storage and celld's `cell_console`
+captures every line. Steps below reflect what shipped.
 
 **Goal:** `@zeroness/broker` + `@zeroness/egress` run on a self-hosted celld
 fleet, so the zeroness control plane needs no Cloudflare account.
@@ -107,34 +113,70 @@ stay green.
 **Done when:** the broker integration flow passes on celld, including an `oidc:`
 identity via the fallback, with `nodejs_compat` set.
 
-## Phase 2 — investigate governing celld workloads (Mode B, the hard part)
+## Phase 2 — investigate governing celld workloads (Mode B) — ✅ INVESTIGATED: b2 blocked
 
-celld's untrusted workload is a **V8 isolate**, not a container, and there is
-**no egress-interception hook**. Two walls:
+**Empirical finding (celld 0.4.0):** an untrusted celld isolate's global `fetch`
+reaches the internet freely (`/egress` probe → `reachedInternet:true, status:200,
+hasFetch:true`). celld exposes **no egress-restriction mechanism** — the only
+network-related controls are `CELLD_MAX_CELL_REQUESTS` (concurrency) and
+`CELLD_FETCH_TIMEOUT_S` (timeout). There is no allowlist, no interception, and no
+way to disable or redirect an isolate's `fetch` via configuration.
 
-- **Isolation strength:** `SECURITY.md` assumes the substrate isolates one
-  tenant; a self-hosted celld isolate is a weaker boundary than a microVM for
-  hostile code. Document this explicitly; do not claim container-grade isolation.
-- **Egress enforcement:** the Cloudflare jail (`createGovernedSandbox`:
-  `enableInternet=false` + `interceptHttps=true` + static `outbound`) has **no
-  celld equivalent**. The strong-enforcement options:
-  - **(b2, investigate first)** Can celld run an isolate with **no ambient
-    `fetch`**, exposing only zeroness `cap:` bindings? If so, deny-by-default is
-    enforced at the binding layer (cleaner than proxy interception). **Spike:
-    determine whether celld lets you control an isolate's globals/bindings.**
-  - **(b3, fallback, weak)** A cooperative `fetch` shim — bypassable by untrusted
-    code, i.e. a convenience, not a jail (same caveat as `HTTP_PROXY` today). Not
-    acceptable for untrusted code.
+**Conclusion:** the **b2** hypothesis (strip/redirect the isolate's ambient
+`fetch` via celld config) is **not achievable on celld as-is**, and **b3** (a
+cooperative in-bundle `fetch` shim) is bypassable — a convenience, not a jail. But
+b2/b3 were both looking at the **wrong layer**. See Phase 3.
 
-**Deliverable:** a spike answering b2. If yes → design the fetch-less cap-only
-isolate model. If no → Phase 3.
+## Phase 3 — govern egress at the network boundary (the Vercel model, no upstream celld change)
 
-## Phase 3 — upstream egress hook in celld (only if Phase 2 fails)
+**Key insight from the Vercel Sandbox reconstruction** (`~/dev/vercel-comp/
+vercel-sandbox-reconstruction/`): Vercel does **not** intercept `fetch` inside the
+guest runtime either. Their egress firewall is **host-side, outside the compute
+unit** — the guest gets a `100.64.0.0/16` tap with **no direct route**, and all
+egress "leaves through a firewall that SNI-peeks and re-resolves." The per-sandbox
+**MITM CA private key stays host-side**; the guest only trusts the cert. And the
+**tenant boundary is the microVM, not the container/isolate** — they don't trust
+the inner isolation for hostile code.
 
-If celld cannot strip an isolate's `fetch`, strong egress governance requires an
-**outbound/fetch-intercept hook in celld itself** (Rust + V8; the runtime already
-mediates `fetch`). Scope this as an RFC to the celld/Deno maintainers — an
-upstream contribution, not an in-repo change.
+Applied to celld, this **dissolves the "need an upstream celld hook" conclusion**.
+You don't make celld intercept `fetch`; you jail celld's network from **outside
+the process**. celld isolates use the host process's network stack, so a host-side
+jail captures every isolate's egress with **zero celld changes**. The design:
+
+1. **Boundary = one microVM (or a locked container in its own netns) per untrusted
+   tenant — never a shared V8 isolate.** Mirror Vercel: the isolate is not a
+   strong enough wall for hostile code; the VM/netns is. `SECURITY.md` already
+   says "one tenant per sandbox"; make it "one tenant per jailed celld unit."
+2. **Host-side network jail:** the untrusted celld unit runs default-deny egress,
+   all outbound forced through the zeroness **Egress Worker** via a transparent
+   proxy — Linux netns + `iptables`/`nftables` REDIRECT/TPROXY to a local proxy
+   that speaks to the Egress, or the process's `HTTP(S)_PROXY` honored **plus** a
+   firewall that fail-closes any non-proxied packet. This is exactly
+   `createGovernedSandbox`'s `enableInternet=false` + intercept, rebuilt with OS
+   networking instead of a Cloudflare primitive.
+3. **Host-side MITM CA for brokered identity:** reuse `@zeroness/tls` — a
+   per-tenant CA whose **private key never enters the jail**, cert trusted inside
+   it. The Egress injects brokered identity and re-originates; the isolate never
+   holds a secret. Same shape as Vercel's `Vercel Network Proxy CA`.
+4. **Apply the matcher-hardening from plan 010 at the proxy**, plus the two
+   proxy-layer items 010 defers: **`authority == SNI` binding** (Vercel's own
+   fronting fix — don't inject a brokered credential unless the inner `:authority`
+   equals the SNI-authorized host) and **DNS resolve-and-pin** (re-resolve the
+   allowed name and connect to that IP, refusing internal results — defeats
+   DNS-rebind, which plan 010's literal floor cannot).
+
+**Deliverable:** a reference "governed celld node" — a container/VM image running
+celld with the netns egress jail + a zeroness transparent proxy → Egress + MITM
+CA, one tenant per unit. Document it as a "governing untrusted workloads on celld"
+section in `docs/DEPLOY-celld.md`. An in-celld `globalOutbound` hook (an upstream
+RFC to denoland/celld) remains a *nice-to-have* that would let a single celld node
+host multiple governed tenants without per-tenant VMs — but it is **no longer on
+the critical path**.
+
+**Security lessons baked in (from breaking Vercel's firewall):** canonicalization
+parity (plan 010 #1), the internal-address floor (010 #2) plus resolve-and-pin at
+the proxy, `authority == SNI` binding, per-domain credential scoping, and
+`redirect: "manual"` (already in the Egress). See `plans/010-egress-matcher-hardening.md`.
 
 ## Honest framing (for docs/marketing when Phase 1 ships)
 

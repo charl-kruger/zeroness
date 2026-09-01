@@ -29,7 +29,8 @@ here.
 | 006 | Gate CI on typecheck + add `.editorconfig` | P3 | S | — | DONE (commit `7431a57`, worktree `zeroness-exec-006`, based on main) |
 | 007 | Per-session rate limiting at the Broker | P2 | M | 004 (stacks) | DONE (commits `0b6984a`/`037e521`/`a1b4ec3`, worktree `zeroness-exec-007`, stacked on 004) |
 | 008 | Wire the queue capability (send-only) | P3 | S | 007 (stacks) | DONE (commit `37bbfec`, worktree `zeroness-exec-008`, stacked on 007) |
-| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 DONE (Mode A viable; crypto scoped to `mintOidc` → node:crypto). Phases 1–3 pending. |
+| 009 | zeroness × celld integration (spike + phased design) | P2 | Phase1 S–M | — | SPIKE 0 + PHASE 1 DONE (`feat/celld-support`): real Broker on celld; OIDC via node:crypto fallback. PHASE 2/3 REDESIGNED around the Vercel model: govern egress at the **network boundary** (host-side netns jail + transparent proxy → Egress + MITM CA), no upstream celld change needed. |
+| 010 | Harden the egress policy matcher (canonicalization, dest-IP floor, host norm.) | P1 | M | — | DONE (commit `cf22971`, branch `advisor/010-egress-matcher-hardening` off `main`, worktree `zeroness-exec-010`). Reviewed: caught + fixed root-escape path bypass + IPv6-literal floor gap in a revise round. |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED
 (one-line rationale).
