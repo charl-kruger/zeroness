@@ -1,10 +1,16 @@
 {
   "name": "@zeroness/example-live-test",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
-  "scripts": { "deploy": "wrangler deploy" },
-  "dependencies": { "@zeroness/core": "workspace:*" },
-  "devDependencies": { "wrangler": "^3.80.0" }
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@zeroness/core": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
 }
